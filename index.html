@@ -1852,6 +1852,37 @@
     return true;
   }
 
+  // 一键同步链接：数据放在 URL 的 #restore= 后面，不会发送到服务器/仓库
+  async function restoreFromHash() {
+    if (!location.hash.startsWith('#restore=')) return false;
+    const raw = location.hash.slice('#restore='.length);
+    history.replaceState(null, '', location.pathname + location.search);
+    try {
+      const b64 = raw.replace(/-/g, '+').replace(/_/g, '/');
+      const pad = b64.length % 4 ? '='.repeat(4 - (b64.length % 4)) : '';
+      const bin = Uint8Array.from(atob(b64 + pad), c => c.charCodeAt(0));
+      let json;
+      if ('DecompressionStream' in window) {
+        const stream = new Blob([bin]).stream().pipeThrough(new DecompressionStream('gzip'));
+        json = await new Response(stream).text();
+      } else {
+        json = new TextDecoder().decode(bin);
+      }
+      const data = JSON.parse(json);
+      if (!confirm('用 zhiqing-system 的数据覆盖这台手机上的 GitHub 版？')) return false;
+      state = normalize(data);
+      viewDate = todayISO();
+      saveNow();
+      applyTheme();
+      toast('已从 zhiqing-system 同步');
+      return true;
+    } catch (e) {
+      console.warn('restore link failed', e);
+      toast('同步链接失败，请用「粘贴恢复」');
+      return false;
+    }
+  }
+
   // ---------- sheet ----------
   let lastFocus = null;
   function openSheet({ title, body, actions = [], onMount }) {
@@ -1929,6 +1960,9 @@
   // ---------- init ----------
   async function init() {
     applyTheme();
+    if (navigator.storage && navigator.storage.persist) {
+      navigator.storage.persist().catch(() => {});
+    }
     $$('.tab').forEach(btn => {
       btn.addEventListener('click', () => switchTab(btn.dataset.tab));
     });
@@ -1947,11 +1981,12 @@
     });
     window.addEventListener('pagehide', flushLocalAndBeacon);
 
+    const restored = await restoreFromHash();
     await syncOnLoad();
     applyTheme();
     switchTab('today');
 
-    if (!hadStore) {
+    if (!hadStore && !restored) {
       saveNow();
       setTimeout(() => {
         if (!$('#sheetRoot').classList.contains('open')) openWelcome();
