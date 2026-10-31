@@ -1869,7 +1869,6 @@
         json = new TextDecoder().decode(bin);
       }
       const data = JSON.parse(json);
-      if (!confirm('用 zhiqing-system 的数据覆盖这台手机上的 GitHub 版？')) return false;
       state = normalize(data);
       viewDate = todayISO();
       saveNow();
