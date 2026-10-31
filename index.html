@@ -515,6 +515,9 @@
     font-size: 11.5px;
   }
   .save-health .save-state[data-state="error"] { color: var(--danger); }
+  .cloud-state { flex: 0 0 auto; color: var(--accent); font-size: 11.5px; }
+  .cloud-state[data-state="error"], .cloud-state[data-state="conflict"] { color: var(--danger); }
+  .cloud-state[data-state="offline"], .cloud-state[data-state="pending"] { color: var(--muted); }
   .data-tools { border-top: 1px solid var(--line); }
   .data-tools summary {
     display: flex;
@@ -768,6 +771,9 @@
   const DB_VERSION = 1;
   const SNAPSHOT_LIMIT = 24;
   const SNAPSHOT_GAP = 60 * 1000;
+  const CLOUD_CONFIG_KEY = 'zhiqing.cloud.v1';
+  const CLOUD_DIRTY_KEY = 'zhiqing.cloud.dirty';
+  const CLOUD_DEFAULT_URL = 'https://zhixiaqing-d7g8gdumr9afe7aff-1522022232.ap-shanghai.app.tcloudbase.com';
   const WEEK = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
   const NOTE_TYPES = [
     { key: 'output', label: '输出', hint: '主动写的文字', unit: '篇', placeholder: '主动写的文字。想法、一段话、一首歌…', empty: '主动写的文字，写一段就存下来。' },
@@ -860,6 +866,20 @@
   let saveMeta = { local: false, indexedDb: false, savedAt: 0, text: '已自动保存', kind: 'saved' };
   let currentSaveText = '已自动保存';
   let currentSaveKind = 'saved';
+  let cloudConfig = (() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(CLOUD_CONFIG_KEY) || 'null');
+      if (saved && typeof saved.url === 'string' && typeof saved.token === 'string') return saved;
+    } catch (e) {}
+    return null;
+  })();
+  let cloudDirty = (() => {
+    try { return localStorage.getItem(CLOUD_DIRTY_KEY) === '1'; } catch (e) { return false; }
+  })();
+  let cloudStatus = { kind: cloudConfig ? 'idle' : 'off', text: cloudConfig ? '等待同步' : '未连接' };
+  let cloudSyncPromise = null;
+  let cloudSyncTimer = null;
+  let applyingCloudState = false;
 
   function requestResult(request) {
     return new Promise((resolve, reject) => {
@@ -989,6 +1009,32 @@
     }
   }
 
+  async function addSnapshotData(data, reason = 'manual') {
+    const db = await openStorageDb();
+    if (!db) return false;
+    const normalized = normalize(data);
+    const now = Date.now();
+    const fingerprint = storageFingerprint(normalized);
+    try {
+      const tx = db.transaction('snapshots', 'readwrite');
+      tx.objectStore('snapshots').add({
+        savedAt: now,
+        updatedAt: Number(normalized.updatedAt) || 0,
+        fingerprint,
+        reason,
+        data: normalized
+      });
+      await transactionDone(tx);
+      lastSnapshotAt = now;
+      lastSnapshotFingerprint = fingerprint;
+      await trimSnapshots(db);
+      return true;
+    } catch (e) {
+      console.warn('写入历史存档失败', e);
+      return false;
+    }
+  }
+
   async function hydrateStoredState() {
     const db = await openStorageDb();
     if (!db) return false;
@@ -1093,6 +1139,10 @@
     saveMeta.kind = ok ? 'saved' : 'error';
     setSaveStatus(text, saveMeta.kind);
     if (!ok) toast('保存失败：请到设置保存副本');
+    if (ok && cloudConfig && !applyingCloudState) {
+      setCloudDirty(true);
+      scheduleCloudSync();
+    }
     return ok;
   }
   function touch() {
@@ -1198,6 +1248,378 @@
     el.classList.add('show');
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => el.classList.remove('show'), 1900);
+  }
+
+  function bytesToBase64Url(bytes) {
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    }
+    return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+  }
+
+  function base64UrlToBytes(value) {
+    const padded = String(value).replace(/-/g, '+').replace(/_/g, '/');
+    const raw = atob(padded + '='.repeat((4 - padded.length % 4) % 4));
+    return Uint8Array.from(raw, char => char.charCodeAt(0));
+  }
+
+  async function deriveCloudKey(token) {
+    const material = await crypto.subtle.digest(
+      'SHA-256',
+      new TextEncoder().encode(`zhiqing-cloud-v1\0${token}`)
+    );
+    return crypto.subtle.importKey('raw', material, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+  }
+
+  async function encryptCloudState(token) {
+    const key = await deriveCloudKey(token);
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const plain = new TextEncoder().encode(JSON.stringify(state));
+    const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, plain);
+    return {
+      ciphertext: bytesToBase64Url(new Uint8Array(encrypted)),
+      iv: bytesToBase64Url(iv)
+    };
+  }
+
+  async function decryptCloudState(document, token) {
+    const key = await deriveCloudKey(token);
+    const plain = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: base64UrlToBytes(document.iv) },
+      key,
+      base64UrlToBytes(document.ciphertext)
+    );
+    return normalize(JSON.parse(new TextDecoder().decode(plain)));
+  }
+
+  function normalizeCloudUrl(value) {
+    const url = new URL(String(value || '').trim());
+    const local = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
+    if (url.protocol !== 'https:' && !(local && url.protocol === 'http:')) {
+      throw new Error('云同步地址必须是 https');
+    }
+    return url.href.replace(/\/+$/, '');
+  }
+
+  function saveCloudConfig(next) {
+    cloudConfig = next;
+    try {
+      if (next) localStorage.setItem(CLOUD_CONFIG_KEY, JSON.stringify(next));
+      else localStorage.removeItem(CLOUD_CONFIG_KEY);
+    } catch (e) {
+      console.warn('保存云同步设置失败', e);
+    }
+  }
+
+  function setCloudDirty(value) {
+    cloudDirty = !!value;
+    try {
+      if (cloudDirty) localStorage.setItem(CLOUD_DIRTY_KEY, '1');
+      else localStorage.removeItem(CLOUD_DIRTY_KEY);
+    } catch (e) {}
+  }
+
+  function setCloudStatus(kind, text) {
+    cloudStatus = { kind, text };
+    const el = $('#cloudStatus');
+    const detail = $('#cloudStatusDetail');
+    const button = $('#cloudSyncNow');
+    if (el) {
+      el.textContent = text;
+      el.dataset.state = kind;
+    }
+    if (detail) detail.textContent = cloudStatusDetailText();
+    if (button) {
+      button.disabled = kind === 'syncing';
+    }
+  }
+
+  function cloudStatusDetailText() {
+    if (!cloudConfig) return '连接后，手机和电脑共用一个加密副本';
+    if (cloudStatus.kind === 'offline') return '已保存到本机，联网后会自动补传';
+    if (cloudStatus.kind === 'error') return '本机数据没有丢，稍后会自动重试';
+    if (cloudConfig.lastSyncAt) {
+      const d = new Date(cloudConfig.lastSyncAt);
+      return `最近同步 ${d.getMonth() + 1}月${d.getDate()}日 ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+    return '已连接，等待第一次同步';
+  }
+
+  function scheduleCloudSync(delay = 2200) {
+    if (!cloudConfig || applyingCloudState) return;
+    clearTimeout(cloudSyncTimer);
+    setCloudStatus(navigator.onLine ? 'pending' : 'offline', navigator.onLine ? '等待上传' : '等待联网');
+    cloudSyncTimer = setTimeout(() => { void syncCloud(); }, delay);
+  }
+
+  async function cloudRequest(config, method, body) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 9000);
+    let response;
+    try {
+      response = await fetch(`${config.url}/api/sync`, {
+        method,
+        headers: {
+          'Authorization': `Bearer ${config.token}`,
+          'Content-Type': 'application/json'
+        },
+        body: body === undefined ? undefined : JSON.stringify(body),
+        cache: 'no-store',
+        signal: ctrl.signal
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+    let payload = {};
+    try { payload = await response.json(); } catch (e) {}
+    if (!response.ok) {
+      const error = new Error(payload.error || `cloud_${response.status}`);
+      error.status = response.status;
+      error.payload = payload;
+      throw error;
+    }
+    return payload;
+  }
+
+  async function uploadCloud(baseRevision) {
+    const uploadedAt = state.updatedAt;
+    const encrypted = await encryptCloudState(cloudConfig.token);
+    const started = Date.now();
+    const payload = await cloudRequest(cloudConfig, 'PUT', {
+      ...encrypted,
+      baseRevision,
+      clientUpdatedAt: uploadedAt
+    });
+    saveCloudConfig({
+      ...cloudConfig,
+      revision: Number(payload.revision),
+      lastSyncAt: started,
+      lastServerAt: Number(payload.updatedAt)
+    });
+    if (state.updatedAt === uploadedAt) setCloudDirty(false);
+    else scheduleCloudSync(500);
+    return payload;
+  }
+
+  async function applyCloudState(remoteState, remote, reason = 'cloud') {
+    const incoming = normalize(remoteState);
+    applyingCloudState = true;
+    try {
+      if (storageFingerprint(incoming) !== storageFingerprint(state)) {
+        await addSnapshotData(state, `before-${reason}`);
+      }
+      state = incoming;
+      viewDate = todayISO();
+      diarySearch = '';
+      const json = JSON.stringify(state);
+      const localOk = writeLocalCopy(json);
+      const indexedDbOk = await writePersistentCopy(json, true);
+      saveMeta = { local: localOk, indexedDb: indexedDbOk, savedAt: Date.now(), text: '已从云端更新', kind: 'saved' };
+      setCloudDirty(false);
+      saveCloudConfig({
+        ...cloudConfig,
+        revision: Number(remote.revision),
+        lastSyncAt: Date.now(),
+        lastServerAt: Number(remote.updatedAt)
+      });
+      applyTheme();
+      renderAll();
+      setSaveStatus('已从云端更新', 'saved');
+      setCloudStatus('synced', '已同步');
+    } finally {
+      applyingCloudState = false;
+    }
+  }
+
+  async function syncCloud(options = {}) {
+    if (!cloudConfig) return false;
+    if (cloudSyncPromise) return cloudSyncPromise;
+    cloudSyncPromise = (async () => {
+      if (!navigator.onLine) {
+        setCloudStatus('offline', '等待联网');
+        return false;
+      }
+      setCloudStatus('syncing', '同步中…');
+      try {
+        let response;
+        try {
+          response = await cloudRequest(cloudConfig, 'GET');
+        } catch (error) {
+          if (error.status === 401) {
+            setCloudStatus('error', '同步密钥不对');
+            return false;
+          }
+          throw error;
+        }
+
+        if (response.empty) {
+          await uploadCloud(0);
+          setCloudStatus('synced', '已同步');
+          if (options.manual) toast('已上传到云端');
+          return true;
+        }
+
+        const remote = response.document;
+        let remoteState;
+        try {
+          remoteState = await decryptCloudState(remote, cloudConfig.token);
+        } catch (e) {
+          setCloudStatus('error', '密钥无法解开云端数据');
+          return false;
+        }
+
+        const remoteChanged = Number(remote.revision) > Number(cloudConfig.revision || 0);
+        if (remoteChanged && cloudDirty) {
+          await addSnapshotData(remoteState, 'cloud-conflict');
+          if ((state.updatedAt || 0) >= Number(remote.clientUpdatedAt)) {
+            await uploadCloud(Number(remote.revision));
+            setCloudStatus('synced', '已同步');
+            if (options.manual) toast('已保留本机较新的内容');
+          } else if ($('#sheetRoot').classList.contains('open')) {
+            setCloudStatus('conflict', '关闭编辑页后更新');
+            return false;
+          } else {
+            await applyCloudState(remoteState, remote, 'conflict');
+            if (options.manual) toast('已采用云端较新的内容');
+          }
+          return true;
+        }
+
+        if (remoteChanged && !cloudDirty) {
+          if ($('#sheetRoot').classList.contains('open')) {
+            setCloudStatus('conflict', '关闭编辑页后更新');
+            return false;
+          }
+          await applyCloudState(remoteState, remote, 'remote');
+          if (options.manual) toast('已从云端更新');
+          return true;
+        }
+
+        if (cloudDirty || (state.updatedAt || 0) > Number(remote.clientUpdatedAt)) {
+          await uploadCloud(Number(remote.revision));
+          setCloudStatus('synced', '已同步');
+          if (options.manual) toast('已上传到云端');
+          return true;
+        }
+
+        saveCloudConfig({
+          ...cloudConfig,
+          revision: Number(remote.revision),
+          lastSyncAt: Date.now(),
+          lastServerAt: Number(remote.updatedAt)
+        });
+        setCloudDirty(false);
+        setCloudStatus('synced', '已同步');
+        if (options.manual) toast('已经是最新版本');
+        return true;
+      } catch (e) {
+        console.warn('云同步失败', e);
+        setCloudStatus(navigator.onLine ? 'error' : 'offline', navigator.onLine ? '稍后重试' : '等待联网');
+        if (options.manual) toast('云同步失败，本机数据已经保存');
+        return false;
+      }
+    })().finally(() => {
+      cloudSyncPromise = null;
+      cloudSyncTimer = null;
+    });
+    return cloudSyncPromise;
+  }
+
+  async function connectCloud(urlValue, token) {
+    const url = normalizeCloudUrl(urlValue);
+    const cleanToken = String(token || '').trim();
+    if (cleanToken.length < 20) throw new Error('同步密钥太短');
+    const config = {
+      url,
+      token: cleanToken,
+      revision: 0,
+      lastSyncAt: 0,
+      deviceId: newId('device')
+    };
+
+    let response;
+    try {
+      const probe = await fetch(`${url}/health`, { cache: 'no-store' });
+      if (!probe.ok) throw new Error('后端没有响应');
+      response = await cloudRequest(config, 'GET');
+    } catch (e) {
+      if (e.status === 401) throw new Error('同步密钥不正确');
+      throw new Error('连接失败，请检查地址和网络');
+    }
+
+    saveCloudConfig(config);
+    setCloudDirty(true);
+    if (response.empty) {
+      await syncCloud({ manual: true });
+      return;
+    }
+
+    const remote = response.document;
+    let remoteState;
+    try {
+      remoteState = await decryptCloudState(remote, cleanToken);
+    } catch (e) {
+      saveCloudConfig(null);
+      throw new Error('同步密钥无法解开云端数据');
+    }
+
+    saveCloudConfig({ ...config, revision: Number(remote.revision) });
+    const useCloud = confirm('云端已经有数据。\n\n确定：采用云端数据\n取消：保留这台手机的数据并覆盖云端');
+    if (useCloud) {
+      await applyCloudState(remoteState, remote, 'connect');
+      toast('已采用云端数据');
+    } else {
+      await uploadCloud(Number(remote.revision));
+      toast('已用本机数据覆盖云端');
+    }
+  }
+
+  function openCloudSetup() {
+    const connected = !!cloudConfig;
+    openSheet({
+      title: '云同步',
+      body: `
+        <div class="field">
+          <label>云同步地址</label>
+          <input class="input" id="cloudUrl" value="${esc(cloudConfig ? cloudConfig.url : CLOUD_DEFAULT_URL)}" placeholder="https://你的服务.workers.dev" autocomplete="off">
+        </div>
+        <div class="field">
+          <label>同步密钥</label>
+          <input class="input" id="cloudToken" type="password" value="${esc(cloudConfig ? cloudConfig.token : '')}" placeholder="只在这台设备和你的密码管理器里保存" autocomplete="off">
+        </div>
+        <div class="hint sheet-hint">日记会先在手机上加密再上传。手机和电脑输入同一个密钥才能看到同一份数据。</div>
+        ${connected ? '<button class="btn danger" id="cloudDisconnect" style="width:100%;margin-top:14px">断开这台设备的云同步</button>' : ''}
+      `,
+      actions: [{
+        label: connected ? '重新连接' : '连接并同步',
+        cls: 'btn primary',
+        onClick: async () => {
+          const url = $('#cloudUrl').value;
+          const token = $('#cloudToken').value;
+          try {
+            await connectCloud(url, token);
+            renderSettings();
+            return true;
+          } catch (e) {
+            toast(e.message || '连接失败');
+            return false;
+          }
+        }
+      }],
+      onMount: root => {
+        const disconnect = root.querySelector('#cloudDisconnect');
+        if (disconnect) disconnect.addEventListener('click', () => {
+          if (!confirm('只断开这台设备，不会删除云端数据。继续吗？')) return;
+          saveCloudConfig(null);
+          setCloudDirty(false);
+          setCloudStatus('off', '未连接');
+          closeSheet();
+          renderSettings();
+          toast('已断开云同步');
+        });
+      }
+    });
   }
 
   // ---------- theme ----------
@@ -1825,6 +2247,29 @@
       </div>
 
       <div class="section">
+        <div class="section-title">云同步</div>
+        <div class="panel">
+          <div class="setting-row">
+            <div>
+              <div class="label">私人云同步</div>
+              <div class="desc" id="cloudStatusDetail">${esc(cloudStatusDetailText())}</div>
+            </div>
+            <span class="cloud-state" id="cloudStatus" data-state="${cloudStatus.kind}">${esc(cloudStatus.text)}</span>
+          </div>
+          ${cloudConfig ? `
+            <button class="setting-row action-row" id="cloudSyncNow">
+              <span><span class="label">现在同步</span><span class="desc">上传本机改动，或取回其他设备的新内容</span></span>
+              <span class="chev">同步</span>
+            </button>` : ''}
+          <button class="setting-row action-row" id="cloudSetup">
+            <span><span class="label">${cloudConfig ? '管理云同步' : '连接云同步'}</span><span class="desc">${cloudConfig ? '检查地址、更换密钥或断开' : '手机和电脑使用同一个同步密钥'}</span></span>
+            <span class="chev">${cloudConfig ? '管理' : '连接'}</span>
+          </button>
+        </div>
+        <div class="hint">内容先在手机上加密再上传；没有同步密钥的人看不到日记明文。</div>
+      </div>
+
+      <div class="section">
         <div class="section-title">外观</div>
         <div class="panel">
           <div class="setting-row">
@@ -1842,7 +2287,7 @@
         <div class="section-title">关于</div>
         <div class="panel">
           <div class="setting-row">
-            <div><div class="label">枝下青 · 手机版</div><div class="desc">版本 1.2 · 这里不抽卡，只记录你真正做了的</div></div>
+            <div><div class="label">枝下青 · 手机版</div><div class="desc">版本 1.3 · 这里不抽卡，只记录你真正做了的</div></div>
           </div>
           <div class="setting-row">
             <div><div class="label">数据在哪里</div><div class="desc">自动保存在这台手机浏览器的两个独立位置，并保留最近 ${SNAPSHOT_LIMIT} 次历史。清理浏览器或换手机前，仍要保存一份副本。</div></div>
@@ -1901,6 +2346,9 @@
       e.target.value = '';
     });
     $('#restoreText').addEventListener('click', openRestoreText);
+    $('#cloudSetup').addEventListener('click', openCloudSetup);
+    const cloudNow = $('#cloudSyncNow');
+    if (cloudNow) cloudNow.addEventListener('click', () => { void syncCloud({ manual: true }); });
     $('#showHelp').addEventListener('click', openWelcome);
     $('#exportMd').addEventListener('click', () => {
       download(`枝下青-导出-${todayISO()}.md`, buildMarkdown(), 'text/markdown');
@@ -2372,6 +2820,7 @@
             <b>设置</b> 加卡片、备份。</p>
           <p>正文边写边存，改动会自动保存在这台手机的浏览器里。清理浏览器或换手机前，到「设置 → 数据 → 保存一份副本」。</p>
           <p class="welcome-soft">第一次用：先到「设置 → 数据 → 导入与恢复」，把你原来的备份粘进来。</p>
+          <p class="welcome-soft">想让手机和电脑共用一份数据，可在「设置 → 云同步」连接私人加密同步。</p>
         </div>
       `,
       actions: [{ label: '知道了', cls: 'btn primary', onClick: () => true }]
@@ -2399,15 +2848,26 @@
     });
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) flushLocalAndBeacon();
+      else if (cloudConfig) void syncCloud();
     });
     window.addEventListener('pagehide', flushLocalAndBeacon);
     window.addEventListener('beforeunload', flushLocalAndBeacon);
+    window.addEventListener('online', () => {
+      if (cloudConfig) scheduleCloudSync(100);
+    });
+    window.addEventListener('offline', () => {
+      if (cloudConfig) setCloudStatus('offline', '等待联网');
+    });
+    setInterval(() => {
+      if (!document.hidden && cloudConfig && !cloudSyncPromise) void syncCloud();
+    }, 60000);
 
     const hydrated = await hydrateStoredState();
     const restored = await restoreFromHash();
     await syncOnLoad();
     applyTheme();
     switchTab('today');
+    if (cloudConfig) scheduleCloudSync(700);
 
     if (!hadStore && !hydrated && !restored) {
       await saveNow({ snapshot: true });

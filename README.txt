@@ -9,3 +9,11 @@ GitHub 源码：https://github.com/1004zxq/zhiqing
 GitHub Pages 没有后端，不能把数据写回仓库，也不能自动跨手机同步。
 网页内的改动会自动保存在当前浏览器的两个位置；换手机或清理浏览器前，
 请在「设置 → 数据 → 保存一份副本」留一份文件。
+
+v1.3 起可连接腾讯云 CloudBase 加密同步服务：
+- 网页先加密，再上传完整数据。
+- 服务端只保存密文和版本号。
+- 手机、电脑输入同一个同步密钥即可共用数据。
+
+同步服务地址：
+https://zhixiaqing-d7g8gdumr9afe7aff-1522022232.ap-shanghai.app.tcloudbase.com
