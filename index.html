@@ -1017,9 +1017,15 @@
     if (fromDb) saveMeta.savedAt = fromDb.savedAt || fromDb.updatedAt;
     lastSnapshotAt = Number(snapshot && snapshot.savedAt) || 0;
     lastSnapshotFingerprint = (snapshot && snapshot.fingerprint) || '';
+    let indexedReady = !!current || !!fromDb;
     if (!current || !fromDb || (state.updatedAt || 0) > fromDb.updatedAt) {
-      await writePersistentCopy(JSON.stringify(state), true);
+      indexedReady = await writePersistentCopy(JSON.stringify(state), true);
     }
+    saveMeta.local = hadStore && !!(() => {
+      try { return localStorage.getItem(STORE); } catch (e) { return null; }
+    })();
+    saveMeta.indexedDb = indexedReady;
+    saveMeta.savedAt = saveMeta.savedAt || Number(state.updatedAt) || Date.now();
     return !!fromDb;
   }
 
