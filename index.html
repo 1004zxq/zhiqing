@@ -282,21 +282,6 @@
   }
   .glance b { color: var(--ink-2); font-weight: 500; }
   .glance .link-btn { margin-left: auto; padding-right: 8px; }
-  .backup-nudge {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    width: 100%;
-    margin: -2px 0 12px;
-    padding: 9px 13px;
-    border: 1px solid var(--line);
-    border-radius: 12px;
-    background: var(--accent-soft);
-    color: var(--accent);
-    font-size: 11.5px;
-    text-align: left;
-  }
-  .backup-nudge b { font-weight: 500; }
   .progress-wrap { display: flex; align-items: center; gap: 10px; margin: 0 3px 14px; }
   .progress-track { flex: 1; height: 3px; border-radius: 99px; background: var(--line); overflow: hidden; }
   .progress-fill { height: 100%; width: 0; background: var(--accent); border-radius: 99px; transition: width .3s ease; }
@@ -518,22 +503,8 @@
   .cloud-state { flex: 0 0 auto; color: var(--accent); font-size: 11.5px; }
   .cloud-state[data-state="error"], .cloud-state[data-state="conflict"] { color: var(--danger); }
   .cloud-state[data-state="offline"], .cloud-state[data-state="pending"] { color: var(--muted); }
-  .data-tools { border-top: 1px solid var(--line); }
-  .data-tools summary {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 13px 16px;
-    list-style: none;
-  }
-  .data-tools summary::-webkit-details-marker { display: none; }
-  .data-tools[open] summary { border-bottom: 1px solid var(--line); }
-  .data-tools summary .label { display: block; font-size: 14px; line-height: 1.4; }
-  .data-tools summary .desc { display: block; margin-top: 2px; color: var(--muted); font-size: 11px; line-height: 1.5; }
-  .data-tools .setting-row { background: var(--paper); }
-  .snapshot-list { display: grid; gap: 8px; }
-  .snapshot-item {
+  .history-list { display: grid; gap: 8px; }
+  .history-item {
     width: 100%;
     padding: 11px 12px;
     border: 1px solid var(--line);
@@ -541,8 +512,11 @@
     background: var(--paper);
     text-align: left;
   }
-  .snapshot-item b { display: block; font-size: 13px; font-weight: 500; }
-  .snapshot-item span { display: block; margin-top: 2px; color: var(--muted); font-size: 11px; }
+  .history-item b { display: block; font-size: 13px; font-weight: 500; }
+  .history-item span { display: block; margin-top: 2px; color: var(--muted); font-size: 11px; }
+  .archived-mark { margin-left: 6px; color: var(--muted); font-size: 9.5px; letter-spacing: .08em; }
+  .card-name .history-arrow { margin-left: 5px; color: var(--muted); font-size: 12px; }
+  .card-row.archived .check { opacity: .35; }
 
   /* ---------- tabbar ---------- */
   .tabbar {
@@ -764,7 +738,7 @@
 (() => {
   'use strict';
 
-  const SEED = {"version":2,"updatedAt":0,"createdAt":"2026-10-29","settings":{"theme":"auto","lastBackup":""},"cards":[{"id":"anchor_zitie","category":"锚点卡","name":"字帖"},{"id":"anchor_tingge","category":"锚点卡","name":"听歌"},{"id":"explore_soft","category":"探索卡","name":"软件"},{"id":"explore_hard","category":"探索卡","name":"硬件"},{"id":"build_struct","category":"建设卡","name":"结构力学"},{"id":"build_read","category":"建设卡","name":"阅读"},{"id":"ice_listen","category":"破冰卡","name":"听力"},{"id":"ice_write","category":"破冰卡","name":"作文"},{"id":"ice_translate","category":"破冰卡","name":"翻译"},{"id":"ice_speak","category":"破冰卡","name":"口语"},{"id":"push_vocab","category":"推进卡","name":"词库"},{"id":"expr_water","category":"表达卡","name":"水彩"},{"id":"expr_oil","category":"表达卡","name":"油画棒"},{"id":"expr_film","category":"表达卡","name":"电影"}],"days":{},"sleep":[]};
+  const SEED = {"version":2,"updatedAt":0,"createdAt":"2026-10-29","settings":{"theme":"auto"},"cards":[{"id":"anchor_zitie","category":"锚点卡","name":"字帖"},{"id":"anchor_tingge","category":"锚点卡","name":"听歌"},{"id":"explore_soft","category":"探索卡","name":"软件"},{"id":"explore_hard","category":"探索卡","name":"硬件"},{"id":"build_struct","category":"建设卡","name":"结构力学"},{"id":"build_read","category":"建设卡","name":"阅读"},{"id":"ice_listen","category":"破冰卡","name":"听力"},{"id":"ice_write","category":"破冰卡","name":"作文"},{"id":"ice_translate","category":"破冰卡","name":"翻译"},{"id":"ice_speak","category":"破冰卡","name":"口语"},{"id":"push_vocab","category":"推进卡","name":"词库"},{"id":"expr_water","category":"表达卡","name":"水彩"},{"id":"expr_oil","category":"表达卡","name":"油画棒"},{"id":"expr_film","category":"表达卡","name":"电影"}],"days":{},"sleep":[]};
   const STORE = 'zhiqing.v1';
   const VERSION = 2;
   const DB_NAME = 'zhiqing.storage';
@@ -823,8 +797,13 @@
       version: VERSION,
       updatedAt: Number(s.updatedAt) || 0,
       createdAt: s.createdAt || base.createdAt,
-      settings: Object.assign({ theme: 'auto', lastBackup: '' }, base.settings || {}, s.settings || {}),
-      cards: Array.isArray(s.cards) ? s.cards.filter(c => c && c.id && c.name && c.category) : clone(base.cards),
+      settings: Object.assign({ theme: 'auto' }, base.settings || {}, s.settings || {}),
+      cards: Array.isArray(s.cards)
+        ? s.cards.filter(c => c && c.id && c.name && c.category).map(c => Object.assign({}, c, {
+          archived: c.archived === true,
+          archivedAt: c.archived === true ? (c.archivedAt || '') : ''
+        }))
+        : clone(base.cards),
       days: s.days && typeof s.days === 'object' && !Array.isArray(s.days) ? s.days : {},
       sleep: Array.isArray(s.sleep) ? s.sleep : clone(base.sleep)
     };
@@ -1121,7 +1100,7 @@
     if (saveMeta.local && saveMeta.indexedDb) return `本机两份都已保存 · ${time} · 自动保留最近 ${SNAPSHOT_LIMIT} 次`;
     if (saveMeta.local) return `已保存到浏览器 · ${time} · 本机仍有一份`;
     if (saveMeta.indexedDb) return `已保存到备用存储 · ${time}`;
-    return '保存失败 · 请马上保存一份副本';
+    return '本机保存失败 · 请检查浏览器存储空间';
   }
   async function completeSave(localOk, indexedDbOk, json) {
     saveMeta = {
@@ -1138,8 +1117,8 @@
     saveMeta.text = text;
     saveMeta.kind = ok ? 'saved' : 'error';
     setSaveStatus(text, saveMeta.kind);
-    if (!ok) toast('保存失败：请到设置保存副本');
-    if (ok && cloudConfig && !applyingCloudState) {
+    if (!ok) toast('本机保存失败，请检查浏览器存储空间；云同步仍会尝试上传');
+    if (cloudConfig && !applyingCloudState) {
       setCloudDirty(true);
       scheduleCloudSync();
     }
@@ -1668,7 +1647,10 @@
     }
     return base.concat(extra);
   }
-  function cardsIn(cat) { return state.cards.filter(c => c.category === cat); }
+  function cardsIn(cat, includeArchived = false) {
+    return state.cards.filter(c => c.category === cat && (includeArchived || !c.archived));
+  }
+  function archivedCards() { return state.cards.filter(c => c.archived); }
   function sleepLabel(date) {
     if (!date) return '—';
     const d = parseISO(date);
@@ -1678,14 +1660,6 @@
   }
   function sleepFor(date) { return state.sleep.find(s => s.date === date); }
   function sleepRows() { return state.sleep.slice().sort((a, b) => String(b.date || '').localeCompare(String(a.date || ''))); }
-  function backupAgeDays() {
-    const last = state.settings.lastBackup;
-    if (!last) return Infinity;
-    const d = parseISO(last);
-    if (isNaN(d.getTime())) return Infinity;
-    return Math.max(0, Math.floor((Date.now() - d.getTime()) / 86400000));
-  }
-  function needsBackup() { return backupAgeDays() >= 7; }
   function diaryEntries(type) {
     return Object.entries(state.days)
       .filter(([, d]) => noteText(d, type).trim())
@@ -1727,12 +1701,15 @@
   // ---------- today ----------
   function renderToday() {
     const day = getDay(viewDate);
-    const totalCards = state.cards.length;
-    const doneCount = state.cards.filter(c => hasKey(day.done, c.id)).length;
+    const activeCards = state.cards.filter(c => !c.archived);
+    const totalCards = activeCards.length;
+    const doneCount = activeCards.filter(c => hasKey(day.done, c.id)).length;
     const isToday = viewDate === todayISO();
     const sleep = sleepFor(viewDate);
     const groups = categoryList().map(cat => {
-      const cards = cardsIn(cat);
+      const cards = cardsIn(cat).concat(
+        cardsIn(cat, true).filter(c => c.archived && hasKey(day.done, c.id))
+      );
       if (!cards.length) return '';
       const catDone = cards.filter(c => hasKey(day.done, c.id)).length;
       return `
@@ -1747,11 +1724,11 @@
               const done = hasKey(day.done, card.id);
               const detail = done ? (day.done[card.id] || '') : '';
               return `
-                <div class="card-row ${done ? 'done' : ''}" data-card="${esc(card.id)}">
-                  <button class="check" data-toggle="${esc(card.id)}" aria-label="${done ? '取消' : '勾选'}${esc(card.name)}" aria-pressed="${done}">${ICON.check}</button>
+                <div class="card-row ${done ? 'done' : ''} ${card.archived ? 'archived' : ''}" data-card="${esc(card.id)}">
+                  <button class="check" ${card.archived ? 'disabled' : `data-toggle="${esc(card.id)}"`} aria-label="${done ? '取消' : '勾选'}${esc(card.name)}" aria-pressed="${done}">${ICON.check}</button>
                   <div class="card-main">
-                    <button class="card-name" data-toggle="${esc(card.id)}">${esc(card.name)}</button>
-                    ${done ? `<input class="detail-input" data-detail="${esc(card.id)}" value="${esc(detail)}" placeholder="${esc(placeholderFor(card))}" enterkeyhint="done">` : ''}
+                    <button class="card-name" data-card-history="${esc(card.id)}">${esc(card.name)}${card.archived ? '<span class="archived-mark">已删除</span>' : ''}<span class="history-arrow">›</span></button>
+                    ${done ? `<input class="detail-input" data-detail="${esc(card.id)}" value="${esc(detail)}" placeholder="${esc(placeholderFor(card))}" enterkeyhint="done" ${card.archived ? 'readonly' : ''}>` : ''}
                   </div>
                 </div>`;
             }).join('')}
@@ -1782,10 +1759,6 @@
           : '还没有记昨夜睡眠'}
         <button class="link-btn" data-go="sleep">${sleep ? '查看' : '去记录'}</button>
       </div>
-      ${needsBackup() ? `<button class="backup-nudge" data-go="settings" data-scroll="data">
-        <span>${state.settings.lastBackup ? `已经 ${backupAgeDays()} 天没备份` : '还没备份过'}</span>
-        <b>去备份</b>
-      </button>` : ''}
       <div class="progress-wrap">
         <div class="progress-track"><div class="progress-fill" style="width:${totalCards ? (doneCount / totalCards * 100) : 0}%"></div></div>
         <div class="progress-text">${doneCount}/${totalCards}</div>
@@ -1801,6 +1774,9 @@
 
     $('#view-today').querySelectorAll('[data-toggle]').forEach(btn => {
       btn.addEventListener('click', () => toggleCard(btn.dataset.toggle));
+    });
+    $('#view-today').querySelectorAll('[data-card-history]').forEach(btn => {
+      btn.addEventListener('click', () => openCardHistory(btn.dataset.cardHistory));
     });
     $('#view-today').querySelectorAll('[data-detail]').forEach(inp => {
       inp.addEventListener('input', () => {
@@ -1831,23 +1807,55 @@
       btn.addEventListener('click', () => {
         if (btn.dataset.type) diaryType = btn.dataset.type;
         switchTab(btn.dataset.go);
-        if (btn.dataset.scroll) {
-          setTimeout(() => {
-            const target = document.querySelector('#exportJson');
-            if (target) target.scrollIntoView({ block: 'center' });
-          }, 60);
-        }
       });
     });
   }
 
   function toggleCard(id) {
+    const card = state.cards.find(c => c.id === id);
+    if (!card || card.archived) return;
     const day = getDay(viewDate, true);
     if (hasKey(day.done, id)) delete day.done[id];
     else day.done[id] = '';
     cleanupDay(viewDate);
     saveNow();
     renderToday();
+  }
+
+  function openCardHistory(id) {
+    const card = state.cards.find(c => c.id === id);
+    if (!card) return;
+    const entries = Object.entries(state.days)
+      .filter(([, day]) => hasKey(day.done || {}, id))
+      .sort((a, b) => b[0].localeCompare(a[0]));
+    openSheet({
+      title: `${card.name} · 历史`,
+      body: `
+        <div class="hint sheet-hint" style="margin:0 0 10px">
+          ${card.archived ? '这张卡已删除，但以前的勾选记录仍然保留。' : `共勾选 ${entries.length} 天。点日期可以看那天的全部内容。`}
+        </div>
+        ${entries.length ? `
+          <div class="history-list">
+            ${entries.map(([date, day]) => {
+              const detail = String(day.done[id] || '').trim();
+              return `<button class="history-item" data-history-date="${esc(date)}">
+                <b>${fmtFull(date)}${date === todayISO() ? ' · 今天' : ''}</b>
+                <span>${detail ? esc(detail) : '已勾选'}</span>
+              </button>`;
+            }).join('')}
+          </div>` : '<div class="empty">还没有勾选记录。</div>'}
+      `,
+      actions: [{ label: '关闭', cls: 'btn ghost', onClick: () => true }],
+      onMount: root => {
+        root.querySelectorAll('[data-history-date]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            viewDate = btn.dataset.historyDate;
+            closeSheet();
+            switchTab('today');
+          });
+        });
+      }
+    });
   }
 
   // ---------- diary ----------
@@ -2160,15 +2168,13 @@
   // ---------- settings ----------
   function renderSettings() {
     const cats = categoryList();
+    const archived = archivedCards();
     const theme = state.settings.theme;
-    const backupStatus = state.settings.lastBackup
-      ? `上次保存副本：${fmtDate(state.settings.lastBackup)}`
-      : '还没单独保存过副本';
     $('#view-settings').innerHTML = `
       <div class="page-head">
         <div>
           <h1 class="page-title">设置</h1>
-          <div class="page-sub">卡片、备份、外观</div>
+          <div class="page-sub">卡片、云同步、外观</div>
         </div>
       </div>
 
@@ -2191,15 +2197,30 @@
                   </div>`).join('')}
               </div>`;
           }).join('')}
+          ${archived.length ? `
+            <div class="cat-block archived-cards">
+              <div class="cat-head"><span>已删除的卡片</span><span>${archived.length}</span></div>
+              ${archived.map(card => `
+                <div class="setting-row card-setting">
+                  <div>
+                    <div class="label">${esc(card.name)}</div>
+                    <div class="desc">历史勾选记录已保留</div>
+                  </div>
+                  <div class="row-actions">
+                    <button class="mini" data-card-history="${esc(card.id)}">历史</button>
+                    <button class="mini" data-restore-card="${esc(card.id)}">恢复</button>
+                  </div>
+                </div>`).join('')}
+            </div>` : ''}
           <div class="setting-row add-card-row">
             <button class="btn ghost" id="addCard">＋ 添加卡片</button>
           </div>
         </div>
-        <div class="hint">删除卡片不会删掉已经写下的日记。</div>
+        <div class="hint">删除只会把卡片移出列表，以前的勾选和补充记录都会保留。</div>
       </div>
 
       <div class="section">
-        <div class="section-title">数据</div>
+        <div class="section-title">保存</div>
         <div class="panel">
           <div class="setting-row save-health">
             <div>
@@ -2208,41 +2229,6 @@
             </div>
             <span class="save-state" id="settingsSaveState" data-state="${currentSaveKind}">${esc(currentSaveText)}</span>
           </div>
-          <button class="setting-row action-row" id="exportJson">
-            <span><span class="label">保存一份副本</span><span class="desc">${esc(backupStatus)} · 推荐发到文件传输助手</span></span>
-            <span class="chev">保存</span>
-          </button>
-          <details class="data-tools">
-            <summary class="action-row">
-              <span><span class="label">导入与恢复</span><span class="desc">自动存档、备份文件、粘贴恢复</span></span>
-              <span class="chev">展开</span>
-            </summary>
-            <button class="setting-row action-row" id="restoreAuto">
-              <span><span class="label">恢复自动存档</span><span class="desc">找回刚才或早些时候的内容</span></span>
-              <span class="chev">选择</span>
-            </button>
-            <button class="setting-row action-row" id="backupText">
-              <span><span class="label">复制备份文本</span><span class="desc">存到备忘录，换手机时用</span></span>
-              <span class="chev">打开</span>
-            </button>
-            <label class="setting-row action-row" for="importFile">
-              <span><span class="label">导入备份文件</span><span class="desc">从 .json 恢复，会覆盖现在的数据</span></span>
-              <span class="chev">选择</span>
-            </label>
-            <input type="file" id="importFile" accept=".json,application/json" hidden>
-            <button class="setting-row action-row" id="restoreText">
-              <span><span class="label">粘贴备份文字</span><span class="desc">把复制过的备份粘回来</span></span>
-              <span class="chev">恢复</span>
-            </button>
-          </details>
-          <button class="setting-row action-row" id="exportMd">
-            <span><span class="label">导出 Markdown</span><span class="desc">整理成系统里的格式，可粘回 zhiqing-system</span></span>
-            <span class="chev">导出</span>
-          </button>
-          <button class="setting-row action-row" id="copyMd">
-            <span><span class="label">复制 Markdown</span><span class="desc">复制到剪贴板</span></span>
-            <span class="chev">复制</span>
-          </button>
         </div>
       </div>
 
@@ -2287,10 +2273,10 @@
         <div class="section-title">关于</div>
         <div class="panel">
           <div class="setting-row">
-            <div><div class="label">枝下青 · 手机版</div><div class="desc">版本 1.3 · 这里不抽卡，只记录你真正做了的</div></div>
+            <div><div class="label">枝下青 · 手机版</div><div class="desc">版本 1.4 · 这里不抽卡，只记录你真正做了的</div></div>
           </div>
           <div class="setting-row">
-            <div><div class="label">数据在哪里</div><div class="desc">自动保存在这台手机浏览器的两个独立位置，并保留最近 ${SNAPSHOT_LIMIT} 次历史。清理浏览器或换手机前，仍要保存一份副本。</div></div>
+            <div><div class="label">数据在哪里</div><div class="desc">自动保存在本机；连接云同步后，手机和电脑共用同一份加密数据。</div></div>
           </div>
           <button class="setting-row action-row" id="showHelp">
             <span><span class="label">再看一遍说明</span><span class="desc">四个页面怎么用</span></span>
@@ -2318,6 +2304,12 @@
     view.querySelectorAll('[data-del-card]').forEach(btn => {
       btn.addEventListener('click', () => deleteCard(btn.dataset.delCard));
     });
+    view.querySelectorAll('[data-card-history]').forEach(btn => {
+      btn.addEventListener('click', () => openCardHistory(btn.dataset.cardHistory));
+    });
+    view.querySelectorAll('[data-restore-card]').forEach(btn => {
+      btn.addEventListener('click', () => restoreCard(btn.dataset.restoreCard));
+    });
     view.querySelectorAll('#themeSeg [data-theme]').forEach(btn => {
       btn.addEventListener('click', () => {
         state.settings.theme = btn.dataset.theme;
@@ -2326,41 +2318,13 @@
         renderSettings();
       });
     });
-    $('#exportJson').addEventListener('click', saveBackupCopy);
-    $('#restoreAuto').addEventListener('click', openAutoArchive);
-    $('#backupText').addEventListener('click', openBackupText);
-    $('#importFile').addEventListener('change', e => {
-      const file = e.target.files && e.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = () => {
-        try {
-          void restoreFromData(JSON.parse(reader.result)).catch(() => {
-            toast('恢复失败，文件可能不完整');
-          });
-        } catch (err) {
-          toast('这个文件读不出来，确认是 .json 备份吗');
-        }
-      };
-      reader.readAsText(file);
-      e.target.value = '';
-    });
-    $('#restoreText').addEventListener('click', openRestoreText);
     $('#cloudSetup').addEventListener('click', openCloudSetup);
     const cloudNow = $('#cloudSyncNow');
     if (cloudNow) cloudNow.addEventListener('click', () => { void syncCloud({ manual: true }); });
     $('#showHelp').addEventListener('click', openWelcome);
-    $('#exportMd').addEventListener('click', () => {
-      download(`枝下青-导出-${todayISO()}.md`, buildMarkdown(), 'text/markdown');
-      toast('已导出 Markdown');
-    });
-    $('#copyMd').addEventListener('click', async () => {
-      const ok = await copyText(buildMarkdown());
-      toast(ok ? 'Markdown 已复制' : '复制失败，试试导出 Markdown');
-    });
     $('#resetAll').addEventListener('click', async () => {
       if (!confirm('清空全部数据，恢复成初始状态？')) return;
-      if (!confirm('真的确定？自动存档也会一起清空。想保留就先保存一份副本。')) return;
+      if (!confirm('真的确定？本机自动存档和全部记录都会一起清空。')) return;
       await clearPersistentStorage();
       try { localStorage.removeItem(STORE); } catch (e) {}
       state = loadState();
@@ -2371,102 +2335,6 @@
       applyTheme();
       renderAll();
       toast('已清空，回到初始状态');
-    });
-  }
-
-  async function saveBackupCopy() {
-    const text = JSON.stringify(state, null, 2);
-    const filename = `枝下青-备份-${todayISO()}.json`;
-    const blob = new Blob([text], { type: 'application/json' });
-    let saved = false;
-
-    if (navigator.share && typeof File === 'function') {
-      const file = new File([blob], filename, { type: 'application/json' });
-      const shareData = { title: '枝下青备份', text: '枝下青数据副本', files: [file] };
-      if (!navigator.canShare || navigator.canShare(shareData)) {
-        try {
-          await navigator.share(shareData);
-          saved = true;
-        } catch (e) {
-          if (e && e.name === 'AbortError') return false;
-          console.warn('系统分享不可用，改为下载', e);
-        }
-      }
-    }
-
-    if (!saved) {
-      download(filename, text, 'application/json');
-      saved = true;
-    }
-
-    if (saved) {
-      state.settings.lastBackup = todayISO();
-      void saveNow({ snapshot: true });
-      toast('副本已保存');
-    }
-    return saved;
-  }
-
-  async function loadSnapshots() {
-    const db = await openStorageDb();
-    if (!db) return [];
-    try {
-      const tx = db.transaction('snapshots', 'readonly');
-      const all = await requestResult(tx.objectStore('snapshots').getAll());
-      return all.sort((a, b) => b.savedAt - a.savedAt);
-    } catch (e) {
-      console.warn('读取自动存档失败', e);
-      return [];
-    }
-  }
-
-  function snapshotSummary(data) {
-    const days = data && data.days ? Object.values(data.days) : [];
-    const notes = days.reduce((sum, day) => sum + (day && day.notes
-      ? Object.values(day.notes).filter(text => String(text || '').trim()).length
-      : 0), 0);
-    const done = days.reduce((sum, day) => sum + Object.keys((day && day.done) || {}).length, 0);
-    return `${notes} 条笔叙 · ${done} 项勾选 · ${(data && data.sleep ? data.sleep.length : 0)} 条睡眠`;
-  }
-
-  async function openAutoArchive() {
-    const snapshots = await loadSnapshots();
-    openSheet({
-      title: '自动存档',
-      body: `
-        ${snapshots.length ? `
-          <div class="hint sheet-hint" style="margin:0 0 10px">每次有改动，都会自动留下历史点。恢复前会先保存现在的版本。</div>
-          <div class="snapshot-list">
-            ${snapshots.map(snapshot => {
-              const date = new Date(snapshot.savedAt);
-              const label = `${date.getMonth() + 1}月${date.getDate()}日 ${pad(date.getHours())}:${pad(date.getMinutes())}`;
-              return `<button class="snapshot-item" data-snapshot="${snapshot.id}">
-                <b>${esc(label)}</b>
-                <span>${esc(snapshotSummary(snapshot.data))}</span>
-              </button>`;
-            }).join('')}
-          </div>
-        ` : '<div class="empty">还没有历史点。以后写了内容，会自动出现在这里。</div>'}
-      `,
-      actions: [{ label: '关闭', cls: 'btn ghost', onClick: () => true }],
-      onMount: root => {
-        root.querySelectorAll('[data-snapshot]').forEach(btn => {
-          btn.addEventListener('click', async () => {
-            const record = snapshots.find(item => String(item.id) === btn.dataset.snapshot);
-            if (!record || !record.data) return;
-            if (!confirm('恢复到这次自动存档？现在的版本也会先存一份。')) return;
-            await saveNow({ snapshot: true, silent: true });
-            state = normalize(record.data);
-            viewDate = todayISO();
-            diarySearch = '';
-            await saveNow({ snapshot: true, silent: true });
-            applyTheme();
-            renderAll();
-            closeSheet();
-            toast('已恢复自动存档');
-          });
-        });
-      }
     });
   }
 
@@ -2507,11 +2375,11 @@
           label: '删除',
           cls: 'btn danger',
           onClick: () => {
-            if (!confirm(`删掉「${card.name}」？已经勾过的记录也会一起删掉。`)) return false;
-            deleteCardData(card.id);
+            if (!confirm(`把「${card.name}」移出卡片列表？以前的勾选记录会保留。`)) return false;
+            archiveCardData(card.id);
             saveNow();
             renderSettings();
-            toast('已删除');
+            toast('已移出列表，历史已保留');
             return true;
           }
         }]),
@@ -2538,218 +2406,32 @@
     });
   }
 
-  function deleteCardData(id) {
-    state.cards = state.cards.filter(c => c.id !== id);
-    for (const day of Object.values(state.days)) {
-      if (day && day.done) delete day.done[id];
-    }
-    for (const date of Object.keys(state.days)) cleanupDay(date);
+  function archiveCardData(id) {
+    const card = state.cards.find(c => c.id === id);
+    if (!card) return;
+    card.archived = true;
+    card.archivedAt = todayISO();
+  }
+
+  function restoreCard(id) {
+    const card = state.cards.find(c => c.id === id);
+    if (!card) return;
+    card.archived = false;
+    card.archivedAt = '';
+    saveNow();
+    renderToday();
+    renderSettings();
+    toast(`已恢复「${card.name}」`);
   }
 
   function deleteCard(id) {
     const card = state.cards.find(c => c.id === id);
     if (!card) return;
-    if (!confirm(`删掉「${card.name}」？已经勾过的记录也会一起删掉。`)) return;
-    deleteCardData(id);
+    if (!confirm(`把「${card.name}」移出卡片列表？以前的勾选记录会保留。`)) return;
+    archiveCardData(id);
     saveNow();
     renderSettings();
-    toast('已删除');
-  }
-
-  // ---------- export ----------
-  function buildMarkdown() {
-    const lines = [];
-    lines.push('# 枝下青 · 导出');
-    lines.push('');
-    lines.push(`> 导出于 ${nowStamp()}`);
-    lines.push('');
-
-    const days = Object.entries(state.days)
-      .filter(([, d]) => Object.keys(d.done || {}).length || hasAnyNote(d))
-      .sort((a, b) => a[0].localeCompare(b[0]));
-    if (days.length) {
-      lines.push('## 调度与笔叙');
-      lines.push('');
-      for (const [date, day] of days) {
-        lines.push(`### ${date}`);
-        lines.push('');
-        const done = state.cards.filter(c => hasKey(day.done, c.id));
-        if (done.length) {
-          lines.push('# 调度');
-          lines.push('');
-          for (const card of done) {
-            const detail = String(day.done[card.id] || '').trim();
-            lines.push(`- [x] ${card.category} ${card.name}${detail ? ' · ' + detail : ''}`);
-          }
-          lines.push('');
-        }
-        const notes = NOTE_TYPES.filter(t => noteText(day, t.key).trim());
-        if (notes.length) {
-          lines.push('# 笔叙');
-          lines.push('');
-          for (const t of notes) {
-            lines.push(`## ${t.label}`);
-            lines.push('');
-            lines.push(noteText(day, t.key).trim());
-            lines.push('');
-          }
-        }
-      }
-    }
-
-    const sleeps = sleepRows().reverse();
-    if (sleeps.length) {
-      lines.push('## 睡眠饮食记录');
-      lines.push('');
-      lines.push('| 日期 | 夜间睡眠 | 白天补觉 | 总睡眠（粗算） | 饮食次数 | 异常项 |');
-      lines.push('|---|---|---|---|---|---|');
-      for (const s of sleeps) {
-        lines.push(`| ${cell(sleepLabel(s.date))} | ${cell(s.night)} | ${cell(s.nap)} | ${cell(s.total)} | ${cell(s.meals)} | ${cell(s.abnormal)} |`);
-      }
-      lines.push('');
-    }
-    return lines.join('\n');
-  }
-  function cell(value) {
-    return String(value || '—').replace(/\|/g, '｜').replace(/\r?\n/g, ' ');
-  }
-
-  function download(filename, text, type) {
-    const blob = new Blob([text], { type: type || 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.rel = 'noopener';
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1500);
-  }
-
-  async function copyText(text) {
-    try {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        await navigator.clipboard.writeText(text);
-        return true;
-      }
-    } catch (e) {}
-    try {
-      const ta = document.createElement('textarea');
-      ta.value = text;
-      ta.style.position = 'fixed';
-      ta.style.opacity = '0';
-      document.body.appendChild(ta);
-      ta.select();
-      const ok = document.execCommand('copy');
-      ta.remove();
-      return ok;
-    } catch (e) {
-      return false;
-    }
-  }
-
-  function openBackupText() {
-    saveNow();
-    const json = JSON.stringify(state, null, 2);
-    openSheet({
-      title: '备份文本',
-      body: `
-        <div class="field">
-          <label>复制下面全部内容，存到备忘录或文件传输助手</label>
-          <textarea class="input backup-text" id="bText" readonly>${esc(json)}</textarea>
-        </div>
-        <div class="hint sheet-hint">这段文字就是完整备份。换手机时用「粘贴恢复」。</div>
-      `,
-      actions: [{
-        label: '复制',
-        cls: 'btn primary',
-        onClick: async () => {
-          const ok = await copyText(json);
-          if (ok) {
-            state.settings.lastBackup = todayISO();
-            saveNow();
-          }
-          toast(ok ? '已复制备份文本' : '复制失败，长按文本框手动复制');
-          return false;
-        }
-      }],
-      onMount: () => {
-        const ta = $('#bText');
-        if (ta) ta.select();
-      }
-    });
-  }
-
-  function openRestoreText() {
-    openSheet({
-      title: '粘贴恢复',
-      body: `
-        <div class="field">
-          <label>把备份文字粘到这里</label>
-          <textarea class="input backup-text" id="rText" placeholder="粘贴完整备份…"></textarea>
-        </div>
-        <div class="hint sheet-hint">会覆盖现在的全部数据。不确定就先「备份文本」留一份。</div>
-      `,
-      actions: [{
-        label: '恢复',
-        cls: 'btn primary',
-        onClick: () => {
-          const text = $('#rText').value.trim();
-          if (!text) { toast('先粘贴备份文字'); return false; }
-          try {
-            const data = JSON.parse(text);
-            return restoreFromData(data);
-          } catch (e) {
-            toast('这段文字不是备份数据');
-            return false;
-          }
-        }
-      }]
-    });
-  }
-
-  async function restoreFromData(data) {
-    if (!data || typeof data !== 'object' || Array.isArray(data) || (!data.cards && !data.days)) {
-      throw new Error('bad data');
-    }
-    if (!confirm('导入会覆盖现在的全部数据。继续吗？')) return false;
-    state = normalize(data);
-    viewDate = todayISO();
-    await saveNow({ snapshot: true });
-    applyTheme();
-    renderAll();
-    toast('已恢复备份');
-    return true;
-  }
-
-  // 一键同步链接：数据放在 URL 的 #restore= 后面，不会发送到服务器/仓库
-  async function restoreFromHash() {
-    if (!location.hash.startsWith('#restore=')) return false;
-    const raw = location.hash.slice('#restore='.length);
-    history.replaceState(null, '', location.pathname + location.search);
-    try {
-      const b64 = raw.replace(/-/g, '+').replace(/_/g, '/');
-      const pad = b64.length % 4 ? '='.repeat(4 - (b64.length % 4)) : '';
-      const bin = Uint8Array.from(atob(b64 + pad), c => c.charCodeAt(0));
-      let json;
-      if ('DecompressionStream' in window) {
-        const stream = new Blob([bin]).stream().pipeThrough(new DecompressionStream('gzip'));
-        json = await new Response(stream).text();
-      } else {
-        json = new TextDecoder().decode(bin);
-      }
-      const data = JSON.parse(json);
-      state = normalize(data);
-      viewDate = todayISO();
-      await saveNow({ snapshot: true });
-      applyTheme();
-      toast('已从 zhiqing-system 同步');
-      return true;
-    } catch (e) {
-      console.warn('restore link failed', e);
-      toast('同步链接失败，请用「粘贴恢复」');
-      return false;
-    }
+    toast('已移出列表，历史已保留');
   }
 
   // ---------- sheet ----------
@@ -2817,9 +2499,9 @@
             <b>今天</b> 勾选做了什么，写一句日常；<br>
             <b>笔叙</b> 输出 / 日常 / 摘录，三种分开写；<br>
             <b>睡眠</b> 自己记睡眠饮食；<br>
-            <b>设置</b> 加卡片、备份。</p>
-          <p>正文边写边存，改动会自动保存在这台手机的浏览器里。清理浏览器或换手机前，到「设置 → 数据 → 保存一份副本」。</p>
-          <p class="welcome-soft">第一次用：先到「设置 → 数据 → 导入与恢复」，把你原来的备份粘进来。</p>
+            <b>设置</b> 添加、恢复和管理卡片。</p>
+          <p>正文边写边存，改动会自动保存在这台手机的浏览器里；点卡片名字可以查看以前勾选过的日期。</p>
+          <p class="welcome-soft">删除卡片只会把它移出列表，以前的勾选和补充记录都会保留。</p>
           <p class="welcome-soft">想让手机和电脑共用一份数据，可在「设置 → 云同步」连接私人加密同步。</p>
         </div>
       `,
@@ -2863,13 +2545,12 @@
     }, 60000);
 
     const hydrated = await hydrateStoredState();
-    const restored = await restoreFromHash();
     await syncOnLoad();
     applyTheme();
     switchTab('today');
     if (cloudConfig) scheduleCloudSync(700);
 
-    if (!hadStore && !hydrated && !restored) {
+    if (!hadStore && !hydrated) {
       await saveNow({ snapshot: true });
       setTimeout(() => {
         if (!$('#sheetRoot').classList.contains('open')) openWelcome();

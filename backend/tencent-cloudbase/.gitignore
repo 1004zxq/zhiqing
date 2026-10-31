@@ -1,0 +1,4 @@
+node_modules/
+cloudbaserc.json
+.env
+.sync-key.dpapi

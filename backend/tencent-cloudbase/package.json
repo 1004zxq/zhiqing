@@ -1,0 +1,11 @@
+{
+  "name": "zhiqing-cloudbase-sync",
+  "private": true,
+  "dependencies": {
+    "@cloudbase/js-sdk": "^3.10.4",
+    "@cloudbase/node-sdk": "^3.18.7"
+  },
+  "devDependencies": {
+    "@cloudbase/cli": "^3.8.11"
+  }
+}

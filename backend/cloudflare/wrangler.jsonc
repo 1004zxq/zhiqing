@@ -1,0 +1,14 @@
+{
+  "$schema": "https://wrangler.cloudflare.com/config-schema.json",
+  "name": "zhiqing-sync",
+  "main": "src/index.js",
+  "compatibility_date": "2026-10-30",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "zhiqing-sync",
+      "database_id": "0e646d60-f06d-4197-8769-28df5d990ae6",
+      "migrations_dir": "migrations"
+    }
+  ]
+}
