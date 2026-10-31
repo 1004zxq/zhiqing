@@ -248,15 +248,33 @@
     background: var(--paper-2);
     margin-bottom: 10px;
   }
-  .date-center { text-align: center; min-width: 0; }
+  .date-center {
+    position: relative;
+    min-width: 0;
+    padding: 3px 14px 4px;
+    border-radius: 10px;
+    text-align: center;
+    cursor: pointer;
+  }
+  .date-center:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .date-picker-native {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    cursor: pointer;
+  }
   .date-main {
+    display: block;
     font-family: var(--serif);
     font-size: 18px;
     line-height: 1.3;
     letter-spacing: .03em;
     font-variant-numeric: tabular-nums;
   }
-  .date-sub { margin-top: 1px; font-size: 10.5px; color: var(--muted); letter-spacing: .08em; }
+  .date-sub { display: block; margin-top: 1px; font-size: 10.5px; color: var(--muted); letter-spacing: .08em; }
   .date-btn {
     flex: 0 0 auto;
     width: 40px; height: 40px;
@@ -324,10 +342,7 @@
   .card-name {
     display: block;
     width: 100%;
-    border: 0;
-    background: none;
     padding: 1px 0 0;
-    text-align: left;
     font-size: 15.5px;
     line-height: 1.4;
     color: var(--ink);
@@ -503,19 +518,7 @@
   .cloud-state { flex: 0 0 auto; color: var(--accent); font-size: 11.5px; }
   .cloud-state[data-state="error"], .cloud-state[data-state="conflict"] { color: var(--danger); }
   .cloud-state[data-state="offline"], .cloud-state[data-state="pending"] { color: var(--muted); }
-  .history-list { display: grid; gap: 8px; }
-  .history-item {
-    width: 100%;
-    padding: 11px 12px;
-    border: 1px solid var(--line);
-    border-radius: 12px;
-    background: var(--paper);
-    text-align: left;
-  }
-  .history-item b { display: block; font-size: 13px; font-weight: 500; }
-  .history-item span { display: block; margin-top: 2px; color: var(--muted); font-size: 11px; }
   .archived-mark { margin-left: 6px; color: var(--muted); font-size: 9.5px; letter-spacing: .08em; }
-  .card-name .history-arrow { margin-left: 5px; color: var(--muted); font-size: 12px; }
   .card-row.archived .check { opacity: .35; }
 
   /* ---------- tabbar ---------- */
@@ -793,17 +796,26 @@
   function normalize(s) {
     const base = clone(SEED);
     s = s && typeof s === 'object' && !Array.isArray(s) ? s : {};
+    const sourceCards = Array.isArray(s.cards) ? s.cards : clone(base.cards);
+    const cards = [];
+    const cardIds = new Set();
+    for (const card of sourceCards) {
+      if (!card || !card.id || !card.name || !card.category || cardIds.has(card.id)) continue;
+      cardIds.add(card.id);
+      cards.push(Object.assign({}, card, {
+        archived: card.archived === true,
+        archivedAt: card.archived === true ? (card.archivedAt || '') : ''
+      }));
+    }
+    for (const card of base.cards) {
+      if (!cardIds.has(card.id)) cards.push(clone(card));
+    }
     const out = {
       version: VERSION,
       updatedAt: Number(s.updatedAt) || 0,
       createdAt: s.createdAt || base.createdAt,
       settings: Object.assign({ theme: 'auto' }, base.settings || {}, s.settings || {}),
-      cards: Array.isArray(s.cards)
-        ? s.cards.filter(c => c && c.id && c.name && c.category).map(c => Object.assign({}, c, {
-          archived: c.archived === true,
-          archivedAt: c.archived === true ? (c.archivedAt || '') : ''
-        }))
-        : clone(base.cards),
+      cards,
       days: s.days && typeof s.days === 'object' && !Array.isArray(s.days) ? s.days : {},
       sleep: Array.isArray(s.sleep) ? s.sleep : clone(base.sleep)
     };
@@ -1303,15 +1315,11 @@
     cloudStatus = { kind, text };
     const el = $('#cloudStatus');
     const detail = $('#cloudStatusDetail');
-    const button = $('#cloudSyncNow');
     if (el) {
       el.textContent = text;
       el.dataset.state = kind;
     }
     if (detail) detail.textContent = cloudStatusDetailText();
-    if (button) {
-      button.disabled = kind === 'syncing';
-    }
   }
 
   function cloudStatusDetailText() {
@@ -1727,7 +1735,7 @@
                 <div class="card-row ${done ? 'done' : ''} ${card.archived ? 'archived' : ''}" data-card="${esc(card.id)}">
                   <button class="check" ${card.archived ? 'disabled' : `data-toggle="${esc(card.id)}"`} aria-label="${done ? '取消' : '勾选'}${esc(card.name)}" aria-pressed="${done}">${ICON.check}</button>
                   <div class="card-main">
-                    <button class="card-name" data-card-history="${esc(card.id)}">${esc(card.name)}${card.archived ? '<span class="archived-mark">已删除</span>' : ''}<span class="history-arrow">›</span></button>
+                    <div class="card-name">${esc(card.name)}${card.archived ? '<span class="archived-mark">已删除</span>' : ''}</div>
                     ${done ? `<input class="detail-input" data-detail="${esc(card.id)}" value="${esc(detail)}" placeholder="${esc(placeholderFor(card))}" enterkeyhint="done" ${card.archived ? 'readonly' : ''}>` : ''}
                   </div>
                 </div>`;
@@ -1746,10 +1754,11 @@
       </div>
       <div class="date-nav">
         <button class="date-btn" data-day="-1" aria-label="前一天">${ICON.chevL}</button>
-        <div class="date-center">
-          <div class="date-main">${fmtFull(viewDate)}</div>
-          <div class="date-sub">${isToday ? '今天' : (hasAnyNote(day) || doneCount ? '补记' : '空白')}</div>
-        </div>
+        <label class="date-center" aria-label="选择要查看的日期">
+          <input class="date-picker-native" id="datePicker" type="date" value="${esc(viewDate)}" max="${todayISO()}">
+          <span class="date-main">${fmtFull(viewDate)}</span>
+          <span class="date-sub">${isToday ? '今天' : `勾选 ${Object.keys(day.done || {}).length} 张`} · 点此选日期</span>
+        </label>
         <button class="date-btn" data-day="1" aria-label="后一天" ${isToday ? 'disabled' : ''}>${ICON.chevR}</button>
       </div>
       ${!isToday ? '<button class="btn ghost back-today" id="backToday">回到今天</button>' : ''}
@@ -1775,9 +1784,6 @@
     $('#view-today').querySelectorAll('[data-toggle]').forEach(btn => {
       btn.addEventListener('click', () => toggleCard(btn.dataset.toggle));
     });
-    $('#view-today').querySelectorAll('[data-card-history]').forEach(btn => {
-      btn.addEventListener('click', () => openCardHistory(btn.dataset.cardHistory));
-    });
     $('#view-today').querySelectorAll('[data-detail]').forEach(inp => {
       inp.addEventListener('input', () => {
         const d = getDay(viewDate, true);
@@ -1801,6 +1807,12 @@
         renderToday();
       });
     });
+    $('#datePicker').addEventListener('change', e => {
+      const selected = String(e.target.value || '');
+      if (!selected || selected > todayISO()) return;
+      viewDate = selected;
+      renderToday();
+    });
     const back = $('#backToday');
     if (back) back.addEventListener('click', () => { viewDate = todayISO(); renderToday(); });
     $('#view-today').querySelectorAll('[data-go]').forEach(btn => {
@@ -1820,42 +1832,6 @@
     cleanupDay(viewDate);
     saveNow();
     renderToday();
-  }
-
-  function openCardHistory(id) {
-    const card = state.cards.find(c => c.id === id);
-    if (!card) return;
-    const entries = Object.entries(state.days)
-      .filter(([, day]) => hasKey(day.done || {}, id))
-      .sort((a, b) => b[0].localeCompare(a[0]));
-    openSheet({
-      title: `${card.name} · 历史`,
-      body: `
-        <div class="hint sheet-hint" style="margin:0 0 10px">
-          ${card.archived ? '这张卡已删除，但以前的勾选记录仍然保留。' : `共勾选 ${entries.length} 天。点日期可以看那天的全部内容。`}
-        </div>
-        ${entries.length ? `
-          <div class="history-list">
-            ${entries.map(([date, day]) => {
-              const detail = String(day.done[id] || '').trim();
-              return `<button class="history-item" data-history-date="${esc(date)}">
-                <b>${fmtFull(date)}${date === todayISO() ? ' · 今天' : ''}</b>
-                <span>${detail ? esc(detail) : '已勾选'}</span>
-              </button>`;
-            }).join('')}
-          </div>` : '<div class="empty">还没有勾选记录。</div>'}
-      `,
-      actions: [{ label: '关闭', cls: 'btn ghost', onClick: () => true }],
-      onMount: root => {
-        root.querySelectorAll('[data-history-date]').forEach(btn => {
-          btn.addEventListener('click', () => {
-            viewDate = btn.dataset.historyDate;
-            closeSheet();
-            switchTab('today');
-          });
-        });
-      }
-    });
   }
 
   // ---------- diary ----------
@@ -2207,7 +2183,6 @@
                     <div class="desc">历史勾选记录已保留</div>
                   </div>
                   <div class="row-actions">
-                    <button class="mini" data-card-history="${esc(card.id)}">历史</button>
                     <button class="mini" data-restore-card="${esc(card.id)}">恢复</button>
                   </div>
                 </div>`).join('')}
@@ -2242,17 +2217,11 @@
             </div>
             <span class="cloud-state" id="cloudStatus" data-state="${cloudStatus.kind}">${esc(cloudStatus.text)}</span>
           </div>
-          ${cloudConfig ? `
-            <button class="setting-row action-row" id="cloudSyncNow">
-              <span><span class="label">现在同步</span><span class="desc">上传本机改动，或取回其他设备的新内容</span></span>
-              <span class="chev">同步</span>
-            </button>` : ''}
           <button class="setting-row action-row" id="cloudSetup">
             <span><span class="label">${cloudConfig ? '管理云同步' : '连接云同步'}</span><span class="desc">${cloudConfig ? '检查地址、更换密钥或断开' : '手机和电脑使用同一个同步密钥'}</span></span>
             <span class="chev">${cloudConfig ? '管理' : '连接'}</span>
           </button>
         </div>
-        <div class="hint">内容先在手机上加密再上传；没有同步密钥的人看不到日记明文。</div>
       </div>
 
       <div class="section">
@@ -2273,15 +2242,8 @@
         <div class="section-title">关于</div>
         <div class="panel">
           <div class="setting-row">
-            <div><div class="label">枝下青 · 手机版</div><div class="desc">版本 1.4 · 这里不抽卡，只记录你真正做了的</div></div>
+            <div><div class="label">枝下青 · 手机版</div><div class="desc">版本 1.5 · 这里不抽卡，只记录你真正做了的</div></div>
           </div>
-          <div class="setting-row">
-            <div><div class="label">数据在哪里</div><div class="desc">自动保存在本机；连接云同步后，手机和电脑共用同一份加密数据。</div></div>
-          </div>
-          <button class="setting-row action-row" id="showHelp">
-            <span><span class="label">再看一遍说明</span><span class="desc">四个页面怎么用</span></span>
-            <span class="chev">打开</span>
-          </button>
           <button class="setting-row action-row danger" id="resetAll">
             <span><span class="label">清空全部数据</span><span class="desc">恢复成初始卡片和已经带入的内容</span></span>
             <span class="chev">清空</span>
@@ -2304,9 +2266,6 @@
     view.querySelectorAll('[data-del-card]').forEach(btn => {
       btn.addEventListener('click', () => deleteCard(btn.dataset.delCard));
     });
-    view.querySelectorAll('[data-card-history]').forEach(btn => {
-      btn.addEventListener('click', () => openCardHistory(btn.dataset.cardHistory));
-    });
     view.querySelectorAll('[data-restore-card]').forEach(btn => {
       btn.addEventListener('click', () => restoreCard(btn.dataset.restoreCard));
     });
@@ -2319,9 +2278,6 @@
       });
     });
     $('#cloudSetup').addEventListener('click', openCloudSetup);
-    const cloudNow = $('#cloudSyncNow');
-    if (cloudNow) cloudNow.addEventListener('click', () => { void syncCloud({ manual: true }); });
-    $('#showHelp').addEventListener('click', openWelcome);
     $('#resetAll').addEventListener('click', async () => {
       if (!confirm('清空全部数据，恢复成初始状态？')) return;
       if (!confirm('真的确定？本机自动存档和全部记录都会一起清空。')) return;
@@ -2500,7 +2456,7 @@
             <b>笔叙</b> 输出 / 日常 / 摘录，三种分开写；<br>
             <b>睡眠</b> 自己记睡眠饮食；<br>
             <b>设置</b> 添加、恢复和管理卡片。</p>
-          <p>正文边写边存，改动会自动保存在这台手机的浏览器里；点卡片名字可以查看以前勾选过的日期。</p>
+          <p>正文边写边存，改动会自动保存在这台手机的浏览器里；点今天的日期可以选择任意过去的日期，查看当天勾选的卡片。</p>
           <p class="welcome-soft">删除卡片只会把它移出列表，以前的勾选和补充记录都会保留。</p>
           <p class="welcome-soft">想让手机和电脑共用一份数据，可在「设置 → 云同步」连接私人加密同步。</p>
         </div>
