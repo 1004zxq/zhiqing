@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="format-detection" content="telephone=no">
 <meta name="theme-color" content="#f5f2ec">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="枝下青">
@@ -135,11 +136,12 @@
     font-size: 10px;
     color: var(--accent);
     letter-spacing: .08em;
-    opacity: 0;
-    transition: opacity .25s;
+    opacity: .78;
+    transition: color .2s, opacity .2s;
     white-space: nowrap;
   }
-  .save-dot.show { opacity: 1; }
+  .save-dot[data-state="pending"] { opacity: 1; color: var(--muted); }
+  .save-dot[data-state="error"] { opacity: 1; color: var(--danger); }
   .icon-btn {
     width: 38px; height: 38px;
     display: grid; place-items: center;
@@ -507,6 +509,37 @@
   .segmented.small { margin: 0; padding: 3px; flex: 0 0 auto; }
   .segmented.small button { min-height: 28px; padding: 5px 10px; font-size: 11.5px; }
   .danger .label, .setting-row.danger .label { color: var(--danger); }
+  .save-health .save-state {
+    flex: 0 0 auto;
+    color: var(--accent);
+    font-size: 11.5px;
+  }
+  .save-health .save-state[data-state="error"] { color: var(--danger); }
+  .data-tools { border-top: 1px solid var(--line); }
+  .data-tools summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 13px 16px;
+    list-style: none;
+  }
+  .data-tools summary::-webkit-details-marker { display: none; }
+  .data-tools[open] summary { border-bottom: 1px solid var(--line); }
+  .data-tools summary .label { display: block; font-size: 14px; line-height: 1.4; }
+  .data-tools summary .desc { display: block; margin-top: 2px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+  .data-tools .setting-row { background: var(--paper); }
+  .snapshot-list { display: grid; gap: 8px; }
+  .snapshot-item {
+    width: 100%;
+    padding: 11px 12px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--paper);
+    text-align: left;
+  }
+  .snapshot-item b { display: block; font-size: 13px; font-weight: 500; }
+  .snapshot-item span { display: block; margin-top: 2px; color: var(--muted); font-size: 11px; }
 
   /* ---------- tabbar ---------- */
   .tabbar {
@@ -689,7 +722,7 @@
         </div>
       </div>
       <div class="topbar-right">
-        <span class="save-dot" id="saveDot">已保存</span>
+        <span class="save-dot" id="saveDot" role="status" aria-live="polite">已自动保存</span>
         <button class="icon-btn" id="themeBtn" aria-label="切换主题"></button>
       </div>
     </header>
@@ -731,6 +764,10 @@
   const SEED = {"version":2,"updatedAt":0,"createdAt":"2026-10-29","settings":{"theme":"auto","lastBackup":""},"cards":[{"id":"anchor_zitie","category":"锚点卡","name":"字帖"},{"id":"anchor_tingge","category":"锚点卡","name":"听歌"},{"id":"explore_soft","category":"探索卡","name":"软件"},{"id":"explore_hard","category":"探索卡","name":"硬件"},{"id":"build_struct","category":"建设卡","name":"结构力学"},{"id":"build_read","category":"建设卡","name":"阅读"},{"id":"ice_listen","category":"破冰卡","name":"听力"},{"id":"ice_write","category":"破冰卡","name":"作文"},{"id":"ice_translate","category":"破冰卡","name":"翻译"},{"id":"ice_speak","category":"破冰卡","name":"口语"},{"id":"push_vocab","category":"推进卡","name":"词库"},{"id":"expr_water","category":"表达卡","name":"水彩"},{"id":"expr_oil","category":"表达卡","name":"油画棒"},{"id":"expr_film","category":"表达卡","name":"电影"}],"days":{},"sleep":[]};
   const STORE = 'zhiqing.v1';
   const VERSION = 2;
+  const DB_NAME = 'zhiqing.storage';
+  const DB_VERSION = 1;
+  const SNAPSHOT_LIMIT = 24;
+  const SNAPSHOT_GAP = 60 * 1000;
   const WEEK = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
   const NOTE_TYPES = [
     { key: 'output', label: '输出', hint: '主动写的文字', unit: '篇', placeholder: '主动写的文字。想法、一段话、一首歌…', empty: '主动写的文字，写一段就存下来。' },
@@ -805,15 +842,185 @@
     return out;
   }
 
-  function loadState() {
+  function loadState(raw) {
     try {
-      const raw = localStorage.getItem(STORE);
+      if (raw === undefined) raw = localStorage.getItem(STORE);
       if (!raw) return clone(SEED);
       return normalize(JSON.parse(raw));
     } catch (e) {
       console.warn('读取数据失败', e);
       return clone(SEED);
     }
+  }
+
+  let storageDbPromise = null;
+  let storageWriteChain = Promise.resolve();
+  let lastSnapshotAt = 0;
+  let lastSnapshotFingerprint = '';
+  let saveMeta = { local: false, indexedDb: false, savedAt: 0, text: '已自动保存', kind: 'saved' };
+  let currentSaveText = '已自动保存';
+  let currentSaveKind = 'saved';
+
+  function requestResult(request) {
+    return new Promise((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error || new Error('IndexedDB request failed'));
+    });
+  }
+
+  function transactionDone(tx) {
+    return new Promise((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error || new Error('IndexedDB transaction failed'));
+      tx.onabort = () => reject(tx.error || new Error('IndexedDB transaction aborted'));
+    });
+  }
+
+  function openStorageDb() {
+    if (!('indexedDB' in window)) return Promise.resolve(null);
+    if (storageDbPromise) return storageDbPromise;
+    storageDbPromise = new Promise((resolve, reject) => {
+      let request;
+      try {
+        request = indexedDB.open(DB_NAME, DB_VERSION);
+      } catch (e) {
+        reject(e);
+        return;
+      }
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains('state')) {
+          db.createObjectStore('state', { keyPath: 'id' });
+        }
+        if (!db.objectStoreNames.contains('snapshots')) {
+          const snapshots = db.createObjectStore('snapshots', { keyPath: 'id', autoIncrement: true });
+          snapshots.createIndex('savedAt', 'savedAt');
+        }
+      };
+      request.onsuccess = () => {
+        const db = request.result;
+        db.onversionchange = () => db.close();
+        resolve(db);
+      };
+      request.onerror = () => reject(request.error || new Error('IndexedDB open failed'));
+      request.onblocked = () => reject(new Error('IndexedDB blocked'));
+    }).catch(err => {
+      console.warn('备用存储不可用', err);
+      storageDbPromise = null;
+      return null;
+    });
+    return storageDbPromise;
+  }
+
+  async function readCurrentFromDb(db) {
+    if (!db) return null;
+    try {
+      const tx = db.transaction('state', 'readonly');
+      const record = await requestResult(tx.objectStore('state').get('current'));
+      return record && record.data ? record : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  async function readLatestSnapshotFromDb(db) {
+    if (!db) return null;
+    try {
+      const tx = db.transaction('snapshots', 'readonly');
+      return await new Promise((resolve, reject) => {
+        const request = tx.objectStore('snapshots').index('savedAt').openCursor(null, 'prev');
+        request.onsuccess = () => {
+          const cursor = request.result;
+          resolve(cursor ? cursor.value : null);
+        };
+        request.onerror = () => reject(request.error);
+      });
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function storageFingerprint(data) {
+    const copy = Object.assign({}, data);
+    delete copy.updatedAt;
+    return JSON.stringify(copy);
+  }
+
+  async function trimSnapshots(db) {
+    const tx = db.transaction('snapshots', 'readonly');
+    const all = await requestResult(tx.objectStore('snapshots').getAll());
+    if (all.length <= SNAPSHOT_LIMIT) return;
+    const remove = all.slice(0, all.length - SNAPSHOT_LIMIT);
+    const trimTx = db.transaction('snapshots', 'readwrite');
+    const store = trimTx.objectStore('snapshots');
+    for (const record of remove) store.delete(record.id);
+    await transactionDone(trimTx);
+  }
+
+  async function writePersistentCopy(json, forceSnapshot = false) {
+    const db = await openStorageDb();
+    if (!db) return false;
+    const data = JSON.parse(json);
+    const now = Date.now();
+    const fingerprint = storageFingerprint(data);
+    const shouldSnapshot = fingerprint !== lastSnapshotFingerprint &&
+      (forceSnapshot || now - lastSnapshotAt >= SNAPSHOT_GAP);
+    try {
+      const tx = db.transaction(['state', 'snapshots'], 'readwrite');
+      tx.objectStore('state').put({ id: 'current', savedAt: now, updatedAt: Number(data.updatedAt) || 0, data });
+      if (shouldSnapshot) {
+        tx.objectStore('snapshots').add({
+          savedAt: now,
+          updatedAt: Number(data.updatedAt) || 0,
+          fingerprint,
+          data
+        });
+      }
+      await transactionDone(tx);
+      if (shouldSnapshot) {
+        lastSnapshotAt = now;
+        lastSnapshotFingerprint = fingerprint;
+        await trimSnapshots(db);
+      }
+      return true;
+    } catch (e) {
+      console.warn('备用存储写入失败', e);
+      return false;
+    }
+  }
+
+  async function hydrateStoredState() {
+    const db = await openStorageDb();
+    if (!db) return false;
+    const current = await readCurrentFromDb(db);
+    const snapshot = await readLatestSnapshotFromDb(db);
+    const candidates = [];
+    for (const record of [current, snapshot]) {
+      if (!record || !record.data) continue;
+      try {
+        candidates.push({
+          record,
+          data: normalize(record.data),
+          updatedAt: Number(record.updatedAt) || 0,
+          savedAt: Number(record.savedAt) || 0
+        });
+      } catch (e) {
+        console.warn('备用存档损坏', e);
+      }
+    }
+    candidates.sort((a, b) => (b.updatedAt - a.updatedAt) || (b.savedAt - a.savedAt));
+    const fromDb = candidates[0] || null;
+    if (fromDb && (!hadStore || fromDb.updatedAt > (state.updatedAt || 0))) {
+      state = fromDb.data;
+      try { localStorage.setItem(STORE, JSON.stringify(state)); } catch (e) {}
+    }
+    if (fromDb) saveMeta.savedAt = fromDb.savedAt || fromDb.updatedAt;
+    lastSnapshotAt = Number(snapshot && snapshot.savedAt) || 0;
+    lastSnapshotFingerprint = (snapshot && snapshot.fingerprint) || '';
+    if (!current || !fromDb || (state.updatedAt || 0) > fromDb.updatedAt) {
+      await writePersistentCopy(JSON.stringify(state), true);
+    }
+    return !!fromDb;
   }
 
   const hadStore = (() => { try { return !!localStorage.getItem(STORE); } catch (e) { return false; } })();
@@ -827,9 +1034,60 @@
   let pushTimer = null;
   let serverAvailable = false;
 
+  function writeLocalCopy(json) {
+    try {
+      localStorage.setItem(STORE, json);
+      return true;
+    } catch (e) {
+      console.warn('本地保存失败', e);
+      return false;
+    }
+  }
   function saveLocalOnly() {
-    try { localStorage.setItem(STORE, JSON.stringify(state)); }
-    catch (e) { console.warn('本地保存失败', e); }
+    return writeLocalCopy(JSON.stringify(state));
+  }
+  function setSaveStatus(text, kind = 'saved') {
+    currentSaveText = text;
+    currentSaveKind = kind;
+    const dot = $('#saveDot');
+    if (dot) {
+      dot.textContent = text;
+      dot.dataset.state = kind;
+    }
+    const settingsState = $('#settingsSaveState');
+    if (settingsState) {
+      settingsState.textContent = text;
+      settingsState.dataset.state = kind;
+    }
+    const summary = $('#storageSummary');
+    if (summary) summary.textContent = storageSummaryText();
+  }
+  function storageSummaryText() {
+    if (!saveMeta.savedAt) return saveMeta.indexedDb ? '本机双份自动保存已开启' : '本机自动保存';
+    const d = new Date(saveMeta.savedAt);
+    const time = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    if (saveMeta.local && saveMeta.indexedDb) return `本机两份都已保存 · ${time} · 自动保留最近 ${SNAPSHOT_LIMIT} 次`;
+    if (saveMeta.local) return `已保存到浏览器 · ${time} · 本机仍有一份`;
+    if (saveMeta.indexedDb) return `已保存到备用存储 · ${time}`;
+    return '保存失败 · 请马上保存一份副本';
+  }
+  async function completeSave(localOk, indexedDbOk, json) {
+    saveMeta = {
+      local: !!localOk,
+      indexedDb: !!indexedDbOk,
+      savedAt: Date.now(),
+      text: '',
+      kind: 'saved'
+    };
+    const ok = localOk || indexedDbOk;
+    const text = ok
+      ? (localOk && indexedDbOk ? '已自动保存' : (localOk ? '已保存到本机' : '已保存到备用存储'))
+      : '保存失败';
+    saveMeta.text = text;
+    saveMeta.kind = ok ? 'saved' : 'error';
+    setSaveStatus(text, saveMeta.kind);
+    if (!ok) toast('保存失败：请到设置保存副本');
+    return ok;
   }
   function touch() {
     state.updatedAt = Date.now();
@@ -890,7 +1148,14 @@
       touch();
     }
     const json = JSON.stringify(state);
-    try { localStorage.setItem(STORE, json); } catch (e) {}
+    const localOk = writeLocalCopy(json);
+    void writePersistentCopy(json, true).then(indexedDbOk => {
+      if (localOk || indexedDbOk) {
+        saveMeta.local = localOk;
+        saveMeta.indexedDb = indexedDbOk;
+        saveMeta.savedAt = Date.now();
+      }
+    });
     if (API && serverAvailable && navigator.sendBeacon) {
       try {
         navigator.sendBeacon(API, new Blob([json], { type: 'application/json' }));
@@ -898,43 +1163,27 @@
     }
   }
 
-  function saveNow() {
+  async function saveNow(options = {}) {
     clearTimeout(saveTimer);
     saveTimer = null;
     touch();
-    let localOk = true;
-    try {
-      localStorage.setItem(STORE, JSON.stringify(state));
-      flashSaved();
-    } catch (e) {
-      console.warn(e);
-      localOk = false;
-      toast('本地保存失败：手机存储可能满了');
-    }
+    const json = JSON.stringify(state);
+    if (!options.silent) setSaveStatus('保存中…', 'pending');
+    const localOk = writeLocalCopy(json);
+    const indexedDbOk = await writePersistentCopy(json, !!options.snapshot);
     pushServer();
-    return localOk;
+    return completeSave(localOk, indexedDbOk, json);
   }
   function scheduleSave() {
     clearTimeout(saveTimer);
+    setSaveStatus('保存中…', 'pending');
     saveTimer = setTimeout(() => {
       saveTimer = null;
-      touch();
-      try {
-        localStorage.setItem(STORE, JSON.stringify(state));
-        flashSaved();
-      } catch (e) {
-        console.warn(e);
-        toast('本地保存失败：手机存储可能满了');
-      }
-      pushServer();
+      void saveNow();
     }, 250);
   }
   function flashSaved() {
-    const el = $('#saveDot');
-    if (!el) return;
-    el.classList.add('show');
-    clearTimeout(flashSaved.t);
-    flashSaved.t = setTimeout(() => el.classList.remove('show'), 900);
+    setSaveStatus(saveMeta.text || '已自动保存', saveMeta.kind || 'saved');
   }
   function toast(msg) {
     const el = $('#toast');
@@ -1251,13 +1500,13 @@
             ${moveTargets.map(t => `<button type="button" class="btn ghost" data-move="${t.key}">${t.label}</button>`).join('')}
           </div>
         </div>
-        <div class="hint sheet-hint">换日期会切换到那天的${info.label}。清空文字后保存，就是删掉这篇。点下面的「移到」可以直接换类型。</div>
+        <div class="hint sheet-hint">边写边存，不用点保存。换日期会切换到那天的${info.label}；清空文字并点「完成」才会删掉这篇。</div>
       `,
       actions: [
         {
-          label: '保存',
+          label: '完成',
           cls: 'btn primary',
-          onClick: () => {
+          onClick: async () => {
             const chosen = $('#dDate').value || loadedDate;
             const text = $('#dText').value;
             if (!text.trim()) {
@@ -1266,20 +1515,20 @@
                 if (!confirm('这篇是空的，要删掉吗？')) return false;
                 getDay(chosen).notes[info.key] = '';
                 cleanupDay(chosen);
-                saveNow();
+                await saveNow();
                 renderDiary();
                 toast('已删除');
                 return true;
               }
-              toast('写一点再保存');
-              return false;
+              toast('没有内容，不新增');
+              return true;
             }
             const day = getDay(chosen, true);
             day.notes[info.key] = text;
             cleanupDay(chosen);
-            saveNow();
+            await saveNow();
             renderDiary();
-            toast('已保存');
+            toast('已自动保存');
             return true;
           }
         }
@@ -1287,21 +1536,26 @@
       onMount: (root) => {
         const dateInput = $('#dDate');
         const textEl = $('#dText');
+        const commitDraft = (chosen = dateInput.value || loadedDate) => {
+          const text = textEl.value;
+          if (!text.trim()) return false;
+          const day = getDay(chosen, true);
+          day.notes[info.key] = text;
+          cleanupDay(chosen);
+          scheduleSave();
+          return true;
+        };
+        textEl.addEventListener('input', () => commitDraft());
         dateInput.addEventListener('change', () => {
           const next = dateInput.value;
           if (!next) return;
-          if (textEl.value.trim() && textEl.value !== loadedText) {
-            if (!confirm('换日期会替换现在的文字，继续吗？')) {
-              dateInput.value = loadedDate;
-              return;
-            }
-          }
+          if (textEl.value.trim()) commitDraft(loadedDate);
           loadedDate = next;
           loadedText = noteText(state.days[next], info.key);
           textEl.value = loadedText;
         });
         root.querySelectorAll('[data-move]').forEach(btn => {
-          btn.addEventListener('click', () => {
+          btn.addEventListener('click', async () => {
             const toType = btn.dataset.move;
             const toInfo = NOTE_TYPES.find(t => t.key === toType);
             if (!toInfo) return;
@@ -1318,7 +1572,7 @@
             day.notes[toType] = finalText;
             day.notes[info.key] = '';
             cleanupDay(chosen);
-            saveNow();
+            await saveNow();
             diaryType = toType;
             diarySearch = '';
             renderDiary();
@@ -1370,6 +1624,7 @@
   function openSleepEditor(item) {
     const isNew = !item;
     const date = item ? item.date : todayISO();
+    let working = item;
     openSheet({
       title: isNew ? '记录睡眠饮食' : '编辑记录',
       body: `
@@ -1412,9 +1667,9 @@
           }
         }]),
         {
-          label: '保存',
+          label: '完成',
           cls: 'btn primary',
-          onClick: () => {
+          onClick: async () => {
             const chosen = $('#sDate').value;
             const night = $('#sNight').value.trim();
             const nap = $('#sNap').value.trim();
@@ -1423,23 +1678,54 @@
             const abnormal = $('#sAbnormal').value.trim();
             if (!chosen) { toast('选一下日期'); return false; }
             if (!night && !nap && !total && !meals && !abnormal) { toast('至少写一点'); return false; }
-            const dup = state.sleep.find(s => s.date === chosen && s.id !== (item && item.id));
+            const dup = state.sleep.find(s => s.date === chosen && s.id !== (working && working.id));
             if (dup) {
               if (!confirm('那天已经有记录了，要替换掉原来的吗？')) return false;
               state.sleep = state.sleep.filter(s => s.id !== dup.id);
             }
-            if (isNew) {
-              state.sleep.push({ id: newId('sleep'), date: chosen, night, nap, total, meals, abnormal });
-            } else {
-              Object.assign(item, { date: chosen, night, nap, total, meals, abnormal });
-            }
-            saveNow();
+            if (!working) {
+              working = { id: newId('sleep'), date: chosen, night, nap, total, meals, abnormal };
+              state.sleep.push(working);
+            } else Object.assign(working, { date: chosen, night, nap, total, meals, abnormal });
+            await saveNow();
             renderSleep();
-            toast('已保存');
+            toast('已自动保存');
             return true;
           }
         }
-      ]
+      ],
+      onMount: root => {
+        const fields = ['sDate', 'sNight', 'sNap', 'sTotal', 'sMeals', 'sAbnormal'];
+        const read = () => {
+          const chosen = $('#sDate').value || date;
+          return {
+            date: chosen,
+            night: $('#sNight').value.trim(),
+            nap: $('#sNap').value.trim(),
+            total: $('#sTotal').value.trim(),
+            meals: $('#sMeals').value.trim(),
+            abnormal: $('#sAbnormal').value.trim()
+          };
+        };
+        const autoSave = () => {
+          const values = read();
+          if (!values.night && !values.nap && !values.total && !values.meals && !values.abnormal) return;
+          const duplicate = state.sleep.find(s => s.date === values.date && s.id !== (working && working.id));
+          if (duplicate) return;
+          if (!working) {
+            working = Object.assign({ id: newId('sleep') }, values);
+            state.sleep.push(working);
+          } else {
+            Object.assign(working, values);
+          }
+          scheduleSave();
+        };
+        fields.forEach(id => {
+          const field = root.querySelector(`#${id}`);
+          if (field) field.addEventListener('input', autoSave);
+          if (field) field.addEventListener('change', autoSave);
+        });
+      }
     });
   }
 
@@ -1447,6 +1733,9 @@
   function renderSettings() {
     const cats = categoryList();
     const theme = state.settings.theme;
+    const backupStatus = state.settings.lastBackup
+      ? `上次保存副本：${fmtDate(state.settings.lastBackup)}`
+      : '还没单独保存过副本';
     $('#view-settings').innerHTML = `
       <div class="page-head">
         <div>
@@ -1484,23 +1773,40 @@
       <div class="section">
         <div class="section-title">数据</div>
         <div class="panel">
+          <div class="setting-row save-health">
+            <div>
+              <div class="label">自动保存</div>
+              <div class="desc" id="storageSummary">${esc(storageSummaryText())}</div>
+            </div>
+            <span class="save-state" id="settingsSaveState" data-state="${currentSaveKind}">${esc(currentSaveText)}</span>
+          </div>
           <button class="setting-row action-row" id="exportJson">
-            <span><span class="label">导出备份</span><span class="desc">.json · 换手机、清缓存前先做</span></span>
-            <span class="chev">导出</span>
+            <span><span class="label">保存一份副本</span><span class="desc">${esc(backupStatus)} · 推荐发到文件传输助手</span></span>
+            <span class="chev">保存</span>
           </button>
-          <button class="setting-row action-row" id="backupText">
-            <span><span class="label">备份文本</span><span class="desc">复制一段文字存到备忘录，换手机时用</span></span>
-            <span class="chev">打开</span>
-          </button>
-          <label class="setting-row action-row" for="importFile">
-            <span><span class="label">导入备份</span><span class="desc">从 .json 文件恢复，会覆盖现在的数据</span></span>
-            <span class="chev">选择</span>
-          </label>
-          <input type="file" id="importFile" accept=".json,application/json" hidden>
-          <button class="setting-row action-row" id="restoreText">
-            <span><span class="label">粘贴恢复</span><span class="desc">把备份文字粘回来</span></span>
-            <span class="chev">恢复</span>
-          </button>
+          <details class="data-tools">
+            <summary class="action-row">
+              <span><span class="label">导入与恢复</span><span class="desc">自动存档、备份文件、粘贴恢复</span></span>
+              <span class="chev">展开</span>
+            </summary>
+            <button class="setting-row action-row" id="restoreAuto">
+              <span><span class="label">恢复自动存档</span><span class="desc">找回刚才或早些时候的内容</span></span>
+              <span class="chev">选择</span>
+            </button>
+            <button class="setting-row action-row" id="backupText">
+              <span><span class="label">复制备份文本</span><span class="desc">存到备忘录，换手机时用</span></span>
+              <span class="chev">打开</span>
+            </button>
+            <label class="setting-row action-row" for="importFile">
+              <span><span class="label">导入备份文件</span><span class="desc">从 .json 恢复，会覆盖现在的数据</span></span>
+              <span class="chev">选择</span>
+            </label>
+            <input type="file" id="importFile" accept=".json,application/json" hidden>
+            <button class="setting-row action-row" id="restoreText">
+              <span><span class="label">粘贴备份文字</span><span class="desc">把复制过的备份粘回来</span></span>
+              <span class="chev">恢复</span>
+            </button>
+          </details>
           <button class="setting-row action-row" id="exportMd">
             <span><span class="label">导出 Markdown</span><span class="desc">整理成系统里的格式，可粘回 zhiqing-system</span></span>
             <span class="chev">导出</span>
@@ -1530,10 +1836,10 @@
         <div class="section-title">关于</div>
         <div class="panel">
           <div class="setting-row">
-            <div><div class="label">枝下青 · 手机版</div><div class="desc">版本 1.1 · 这里不抽卡，只记录你真正做了的</div></div>
+            <div><div class="label">枝下青 · 手机版</div><div class="desc">版本 1.2 · 这里不抽卡，只记录你真正做了的</div></div>
           </div>
           <div class="setting-row">
-            <div><div class="label">数据在哪里</div><div class="desc">只存在这台手机的浏览器里。换手机、清理浏览器前，先「备份文本」。</div></div>
+            <div><div class="label">数据在哪里</div><div class="desc">自动保存在这台手机浏览器的两个独立位置，并保留最近 ${SNAPSHOT_LIMIT} 次历史。清理浏览器或换手机前，仍要保存一份副本。</div></div>
           </div>
           <button class="setting-row action-row" id="showHelp">
             <span><span class="label">再看一遍说明</span><span class="desc">四个页面怎么用</span></span>
@@ -1569,12 +1875,8 @@
         renderSettings();
       });
     });
-    $('#exportJson').addEventListener('click', () => {
-      state.settings.lastBackup = todayISO();
-      saveNow();
-      download(`枝下青-备份-${todayISO()}.json`, JSON.stringify(state, null, 2), 'application/json');
-      toast('已导出备份');
-    });
+    $('#exportJson').addEventListener('click', saveBackupCopy);
+    $('#restoreAuto').addEventListener('click', openAutoArchive);
     $('#backupText').addEventListener('click', openBackupText);
     $('#importFile').addEventListener('change', e => {
       const file = e.target.files && e.target.files[0];
@@ -1582,7 +1884,9 @@
       const reader = new FileReader();
       reader.onload = () => {
         try {
-          restoreFromData(JSON.parse(reader.result));
+          void restoreFromData(JSON.parse(reader.result)).catch(() => {
+            toast('恢复失败，文件可能不完整');
+          });
         } catch (err) {
           toast('这个文件读不出来，确认是 .json 备份吗');
         }
@@ -1600,19 +1904,131 @@
       const ok = await copyText(buildMarkdown());
       toast(ok ? 'Markdown 已复制' : '复制失败，试试导出 Markdown');
     });
-    $('#resetAll').addEventListener('click', () => {
+    $('#resetAll').addEventListener('click', async () => {
       if (!confirm('清空全部数据，恢复成初始状态？')) return;
-      if (!confirm('真的确定？这一步不能撤销。想保留就先导出备份。')) return;
+      if (!confirm('真的确定？自动存档也会一起清空。想保留就先保存一份副本。')) return;
+      await clearPersistentStorage();
       try { localStorage.removeItem(STORE); } catch (e) {}
       state = loadState();
       viewDate = todayISO();
       diarySearch = '';
       diaryType = 'daily';
-      saveNow();
+      await saveNow({ snapshot: true });
       applyTheme();
       renderAll();
       toast('已清空，回到初始状态');
     });
+  }
+
+  async function saveBackupCopy() {
+    const text = JSON.stringify(state, null, 2);
+    const filename = `枝下青-备份-${todayISO()}.json`;
+    const blob = new Blob([text], { type: 'application/json' });
+    let saved = false;
+
+    if (navigator.share && typeof File === 'function') {
+      const file = new File([blob], filename, { type: 'application/json' });
+      const shareData = { title: '枝下青备份', text: '枝下青数据副本', files: [file] };
+      if (!navigator.canShare || navigator.canShare(shareData)) {
+        try {
+          await navigator.share(shareData);
+          saved = true;
+        } catch (e) {
+          if (e && e.name === 'AbortError') return false;
+          console.warn('系统分享不可用，改为下载', e);
+        }
+      }
+    }
+
+    if (!saved) {
+      download(filename, text, 'application/json');
+      saved = true;
+    }
+
+    if (saved) {
+      state.settings.lastBackup = todayISO();
+      void saveNow({ snapshot: true });
+      toast('副本已保存');
+    }
+    return saved;
+  }
+
+  async function loadSnapshots() {
+    const db = await openStorageDb();
+    if (!db) return [];
+    try {
+      const tx = db.transaction('snapshots', 'readonly');
+      const all = await requestResult(tx.objectStore('snapshots').getAll());
+      return all.sort((a, b) => b.savedAt - a.savedAt);
+    } catch (e) {
+      console.warn('读取自动存档失败', e);
+      return [];
+    }
+  }
+
+  function snapshotSummary(data) {
+    const days = data && data.days ? Object.values(data.days) : [];
+    const notes = days.reduce((sum, day) => sum + (day && day.notes
+      ? Object.values(day.notes).filter(text => String(text || '').trim()).length
+      : 0), 0);
+    const done = days.reduce((sum, day) => sum + Object.keys((day && day.done) || {}).length, 0);
+    return `${notes} 条笔叙 · ${done} 项勾选 · ${(data && data.sleep ? data.sleep.length : 0)} 条睡眠`;
+  }
+
+  async function openAutoArchive() {
+    const snapshots = await loadSnapshots();
+    openSheet({
+      title: '自动存档',
+      body: `
+        ${snapshots.length ? `
+          <div class="hint sheet-hint" style="margin:0 0 10px">每次有改动，都会自动留下历史点。恢复前会先保存现在的版本。</div>
+          <div class="snapshot-list">
+            ${snapshots.map(snapshot => {
+              const date = new Date(snapshot.savedAt);
+              const label = `${date.getMonth() + 1}月${date.getDate()}日 ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+              return `<button class="snapshot-item" data-snapshot="${snapshot.id}">
+                <b>${esc(label)}</b>
+                <span>${esc(snapshotSummary(snapshot.data))}</span>
+              </button>`;
+            }).join('')}
+          </div>
+        ` : '<div class="empty">还没有历史点。以后写了内容，会自动出现在这里。</div>'}
+      `,
+      actions: [{ label: '关闭', cls: 'btn ghost', onClick: () => true }],
+      onMount: root => {
+        root.querySelectorAll('[data-snapshot]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const record = snapshots.find(item => String(item.id) === btn.dataset.snapshot);
+            if (!record || !record.data) return;
+            if (!confirm('恢复到这次自动存档？现在的版本也会先存一份。')) return;
+            await saveNow({ snapshot: true, silent: true });
+            state = normalize(record.data);
+            viewDate = todayISO();
+            diarySearch = '';
+            await saveNow({ snapshot: true, silent: true });
+            applyTheme();
+            renderAll();
+            closeSheet();
+            toast('已恢复自动存档');
+          });
+        });
+      }
+    });
+  }
+
+  async function clearPersistentStorage() {
+    const db = await openStorageDb();
+    if (!db) return;
+    try {
+      const tx = db.transaction(['state', 'snapshots'], 'readwrite');
+      tx.objectStore('state').clear();
+      tx.objectStore('snapshots').clear();
+      await transactionDone(tx);
+      lastSnapshotAt = 0;
+      lastSnapshotFingerprint = '';
+    } catch (e) {
+      console.warn('清空备用存储失败', e);
+    }
   }
 
   function openCardEditor(card) {
@@ -1838,14 +2254,14 @@
     });
   }
 
-  function restoreFromData(data) {
+  async function restoreFromData(data) {
     if (!data || typeof data !== 'object' || Array.isArray(data) || (!data.cards && !data.days)) {
       throw new Error('bad data');
     }
     if (!confirm('导入会覆盖现在的全部数据。继续吗？')) return false;
     state = normalize(data);
     viewDate = todayISO();
-    saveNow();
+    await saveNow({ snapshot: true });
     applyTheme();
     renderAll();
     toast('已恢复备份');
@@ -1871,7 +2287,7 @@
       const data = JSON.parse(json);
       state = normalize(data);
       viewDate = todayISO();
-      saveNow();
+      await saveNow({ snapshot: true });
       applyTheme();
       toast('已从 zhiqing-system 同步');
       return true;
@@ -1948,8 +2364,8 @@
             <b>笔叙</b> 输出 / 日常 / 摘录，三种分开写；<br>
             <b>睡眠</b> 自己记睡眠饮食；<br>
             <b>设置</b> 加卡片、备份。</p>
-          <p>只存在这台手机的浏览器里。换手机、清理浏览器前，先「备份文本」。</p>
-          <p class="welcome-soft">第一次用：先到「设置 → 数据 → 粘贴恢复」，把你原来的备份文字粘进来。</p>
+          <p>正文边写边存，改动会自动保存在这台手机的浏览器里。清理浏览器或换手机前，到「设置 → 数据 → 保存一份副本」。</p>
+          <p class="welcome-soft">第一次用：先到「设置 → 数据 → 导入与恢复」，把你原来的备份粘进来。</p>
         </div>
       `,
       actions: [{ label: '知道了', cls: 'btn primary', onClick: () => true }]
@@ -1979,17 +2395,21 @@
       if (document.hidden) flushLocalAndBeacon();
     });
     window.addEventListener('pagehide', flushLocalAndBeacon);
+    window.addEventListener('beforeunload', flushLocalAndBeacon);
 
+    const hydrated = await hydrateStoredState();
     const restored = await restoreFromHash();
     await syncOnLoad();
     applyTheme();
     switchTab('today');
 
-    if (!hadStore && !restored) {
-      saveNow();
+    if (!hadStore && !hydrated && !restored) {
+      await saveNow({ snapshot: true });
       setTimeout(() => {
         if (!$('#sheetRoot').classList.contains('open')) openWelcome();
       }, 500);
+    } else {
+      setSaveStatus(currentSaveText, currentSaveKind);
     }
   }
 
