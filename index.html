@@ -1540,7 +1540,7 @@
 
     let response;
     try {
-      const probe = await fetch(`${url}/health`, { cache: 'no-store' });
+      const probe = await fetch(`${url}/api/health`, { cache: 'no-store' });
       if (!probe.ok) throw new Error('后端没有响应');
       response = await cloudRequest(config, 'GET');
     } catch (e) {
