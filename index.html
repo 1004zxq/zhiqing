@@ -1561,9 +1561,9 @@
       throw new Error('连接失败，请检查地址和网络');
     }
 
-    saveCloudConfig(config);
-    setCloudDirty(true);
     if (response.empty) {
+      saveCloudConfig(config);
+      setCloudDirty(true);
       await syncCloud({ manual: true });
       return;
     }
@@ -1573,19 +1573,22 @@
     try {
       remoteState = await decryptCloudState(remote, cleanToken);
     } catch (e) {
-      saveCloudConfig(null);
       throw new Error('同步密钥无法解开云端数据');
     }
 
-    saveCloudConfig({ ...config, revision: Number(remote.revision) });
-    const useCloud = confirm('云端已经有数据。\n\n确定：采用云端数据\n取消：保留这台手机的数据并覆盖云端');
-    if (useCloud) {
-      await applyCloudState(remoteState, remote, 'connect');
-      toast('已采用云端数据');
-    } else {
-      await uploadCloud(Number(remote.revision));
-      toast('已用本机数据覆盖云端');
+    const cloudDates = Object.keys(remoteState.days || {}).sort();
+    const lastCloudDate = cloudDates[cloudDates.length - 1];
+    const useCloud = confirm(
+      `云端找到 ${cloudDates.length} 天记录${lastCloudDate ? `，最近到 ${fmtDate(lastCloudDate)}` : ''}。\n\n` +
+      '确定：把云端记录恢复到这台手机\n取消：保持现状，不会改动云端'
+    );
+    if (!useCloud) {
+      toast('未恢复，云端数据没有被改动');
+      return;
     }
+    saveCloudConfig({ ...config, revision: Number(remote.revision) });
+    await applyCloudState(remoteState, remote, 'connect');
+    toast('云端记录已恢复');
   }
 
   function openCloudSetup() {
