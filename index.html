@@ -366,6 +366,92 @@
   .detail-input::placeholder { color: var(--muted); opacity: .7; }
   .detail-input:focus { border-bottom-color: var(--accent); }
 
+  /* ---------- todos ---------- */
+  .todo-form {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .todo-input {
+    flex: 1;
+    min-width: 0;
+    padding: 11px 14px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: var(--paper-2);
+    outline: none;
+    font-size: 15px;
+  }
+  .todo-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .todo-add-btn {
+    flex: 0 0 auto;
+    width: 44px;
+    padding: 0;
+    border: 1px solid var(--accent);
+    border-radius: 14px;
+    background: var(--accent);
+    color: var(--on-accent);
+    font-size: 22px;
+  }
+  .todo-list {
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: var(--paper-2);
+    overflow: hidden;
+  }
+  .todo-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 11px;
+    padding: 12px 10px 12px 14px;
+    border-bottom: 1px solid var(--line);
+  }
+  .todo-row:last-child { border-bottom: 0; }
+  .todo-row.done .check { background: var(--accent); border-color: var(--accent); }
+  .todo-row.done .check svg { opacity: 1; transform: none; }
+  .todo-row.done .todo-title { color: var(--muted); text-decoration: line-through; }
+  .todo-main { flex: 1; min-width: 0; }
+  .todo-title {
+    display: block;
+    width: 100%;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    text-align: left;
+    font-size: 15px;
+    line-height: 1.55;
+    white-space: pre-wrap;
+  }
+  .todo-note { margin-top: 3px; color: var(--muted); font-size: 11.5px; white-space: pre-wrap; }
+  .todo-delete {
+    flex: 0 0 auto;
+    width: 32px;
+    height: 32px;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    border-radius: 9px;
+    background: transparent;
+    color: var(--muted);
+  }
+  .todo-delete svg { width: 15px; height: 15px; }
+  .legacy-record {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    width: 100%;
+    margin-top: 9px;
+    padding: 9px 12px;
+    border: 1px dashed var(--line-strong);
+    border-radius: 12px;
+    background: transparent;
+    color: var(--muted);
+    text-align: left;
+    font-size: 11.5px;
+  }
+
   .note-head { display: flex; align-items: center; justify-content: space-between; margin: 20px 5px 8px; }
   .note-label { font-size: 10.5px; letter-spacing: .18em; color: var(--muted); }
   .today-notes { display: grid; gap: 8px; }
@@ -547,6 +633,91 @@
   .card-name .history-arrow { margin-left: 5px; color: var(--muted); font-size: 12px; }
   .card-row.archived .check { opacity: .35; }
 
+  /* ---------- ruqi chat ---------- */
+  #view-ruqi.active { display: flex; flex-direction: column; min-height: calc(100dvh - 176px); }
+  .ruqi-head { margin-bottom: 12px; }
+  .ruqi-intro {
+    padding: 11px 13px;
+    border: 1px dashed var(--line-strong);
+    border-radius: 13px;
+    color: var(--muted);
+    font-size: 11.5px;
+    line-height: 1.65;
+  }
+  .ruqi-messages { flex: 1; display: grid; gap: 10px; align-content: start; padding-bottom: 12px; }
+  .ruqi-bubble {
+    max-width: 88%;
+    padding: 10px 13px;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: var(--paper-2);
+    font-size: 14px;
+    line-height: 1.72;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .ruqi-bubble.user {
+    justify-self: end;
+    border-color: var(--accent);
+    background: var(--accent);
+    color: var(--on-accent);
+  }
+  .ruqi-bubble.assistant { justify-self: start; font-family: var(--serif); font-size: 15px; }
+  .ruqi-bubble.error { border-color: var(--danger); color: var(--danger); }
+  .ruqi-add-todo {
+    display: block;
+    margin-top: 7px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--accent);
+    font-size: 11px;
+  }
+  .ruqi-quick { display: flex; gap: 7px; overflow-x: auto; padding: 8px 0 9px; scrollbar-width: none; }
+  .ruqi-quick::-webkit-scrollbar { display: none; }
+  .ruqi-quick button {
+    flex: 0 0 auto;
+    padding: 7px 11px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--paper-2);
+    color: var(--ink-2);
+    font-size: 11.5px;
+  }
+  .ruqi-composer {
+    position: sticky;
+    bottom: calc(70px + env(safe-area-inset-bottom));
+    display: flex;
+    gap: 8px;
+    padding: 9px;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: var(--topbar);
+    -webkit-backdrop-filter: blur(16px);
+    backdrop-filter: blur(16px);
+  }
+  .ruqi-composer textarea {
+    flex: 1;
+    min-width: 0;
+    min-height: 42px;
+    max-height: 120px;
+    padding: 9px 10px;
+    border: 0;
+    background: transparent;
+    outline: none;
+    resize: none;
+  }
+  .ruqi-send {
+    flex: 0 0 auto;
+    align-self: flex-end;
+    min-height: 38px;
+    padding: 7px 13px;
+    border: 1px solid var(--accent);
+    border-radius: 12px;
+    background: var(--accent);
+    color: var(--on-accent);
+  }
+
   /* ---------- tabbar ---------- */
   .tabbar {
     position: fixed;
@@ -555,7 +726,7 @@
     transform: translateX(-50%);
     z-index: 30;
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     width: 100%;
     max-width: 640px;
     padding: 6px 6px calc(6px + env(safe-area-inset-bottom));
@@ -737,6 +908,7 @@
       <section class="view active" id="view-today" data-view="today"><div class="loading">正在打开…</div></section>
       <section class="view" id="view-diary" data-view="diary"></section>
       <section class="view" id="view-sleep" data-view="sleep"></section>
+      <section class="view" id="view-ruqi" data-view="ruqi"></section>
       <section class="view" id="view-settings" data-view="settings"></section>
     </main>
   </div>
@@ -753,6 +925,10 @@
     <button class="tab" data-tab="sleep">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5z"/></svg>
       <span>睡眠</span>
+    </button>
+    <button class="tab" data-tab="ruqi">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5h16v10H9l-4.5 3v-3H4z"/><path d="M8 9h8M8 12h5"/></svg>
+      <span>如期</span>
     </button>
     <button class="tab" data-tab="settings">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h9M18 7h2M4 17h2M11 17h9"/><circle cx="15.5" cy="7" r="2.2"/><circle cx="8.5" cy="17" r="2.2"/></svg>
@@ -776,7 +952,10 @@
   const SNAPSHOT_GAP = 60 * 1000;
   const CLOUD_CONFIG_KEY = 'zhiqing.cloud.v1';
   const CLOUD_DIRTY_KEY = 'zhiqing.cloud.dirty';
+  const RUQI_KEY_KEY = 'zhiqing.ruqi.key';
   const CLOUD_DEFAULT_URL = 'https://zhixiaqing-d7g8gdumr9afe7aff-1522022232.ap-shanghai.app.tcloudbase.com';
+  const RUQI_HISTORY_LIMIT = 40;
+  const RUQI_SEALED_URL = './ruqi-sealed.json';
   const WEEK = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
   const NOTE_TYPES = [
     { key: 'output', label: '输出', hint: '主动写的文字', unit: '篇', placeholder: '主动写的文字。想法、一段话、一首歌…', empty: '主动写的文字，写一段就存下来。' },
@@ -843,12 +1022,32 @@
       settings: Object.assign({ theme: 'auto' }, base.settings || {}, s.settings || {}),
       cards,
       days: s.days && typeof s.days === 'object' && !Array.isArray(s.days) ? s.days : {},
-      sleep: Array.isArray(s.sleep) ? s.sleep : clone(base.sleep)
+      sleep: Array.isArray(s.sleep) ? s.sleep : clone(base.sleep),
+      ruqi: {
+        messages: s.ruqi && Array.isArray(s.ruqi.messages)
+          ? s.ruqi.messages
+            .filter(message => message && (message.role === 'user' || message.role === 'assistant') && String(message.text || '').trim())
+            .slice(-RUQI_HISTORY_LIMIT)
+            .map(message => ({
+              role: message.role,
+              text: String(message.text).slice(0, 8000),
+              at: typeof message.at === 'string' ? message.at : ''
+            }))
+          : []
+      }
     };
     for (const key of Object.keys(out.days)) {
       const day = out.days[key];
       if (!day || typeof day !== 'object' || Array.isArray(day)) { delete out.days[key]; continue; }
       day.done = day.done && typeof day.done === 'object' && !Array.isArray(day.done) ? day.done : {};
+      day.todos = (Array.isArray(day.todos) ? day.todos : []).map((todo, index) => ({
+        id: String(todo && todo.id || `todo_${key}_${index}`),
+        text: String(todo && todo.text || '').trim().slice(0, 500),
+        note: String(todo && todo.note || '').slice(0, 3000),
+        done: !!(todo && todo.done),
+        createdAt: String(todo && todo.createdAt || ''),
+        completedAt: String(todo && todo.completedAt || '')
+      })).filter(todo => todo.text);
       const notes = day.notes && typeof day.notes === 'object' && !Array.isArray(day.notes) ? day.notes : {};
       day.notes = {
         output: typeof notes.output === 'string' ? notes.output : '',
@@ -1102,6 +1301,13 @@
   let toastTimer = null;
   let pushTimer = null;
   let serverAvailable = false;
+  let ruqiSending = false;
+  let ruqiError = '';
+  let ruqiDraft = '';
+  let ruqiSealedPromise = null;
+  let ruqiLocalKey = (() => {
+    try { return localStorage.getItem(RUQI_KEY_KEY) || ''; } catch (e) { return ''; }
+  })();
 
   function writeLocalCopy(json) {
     try {
@@ -1664,17 +1870,19 @@
   function getDay(date, create = false) {
     if (!state.days[date]) {
       if (!create) return { done: {}, notes: emptyNotes() };
-      state.days[date] = { done: {}, notes: emptyNotes() };
+      state.days[date] = { done: {}, notes: emptyNotes(), todos: [] };
     }
     const day = state.days[date];
     if (!day.notes) day.notes = emptyNotes();
+    if (!Array.isArray(day.todos)) day.todos = [];
     return day;
   }
   function cleanupDay(date) {
     const day = state.days[date];
     if (!day) return;
     const hasDone = Object.keys(day.done || {}).length > 0;
-    if (!hasDone && !hasAnyNote(day)) delete state.days[date];
+    const hasTodos = Array.isArray(day.todos) && day.todos.length > 0;
+    if (!hasDone && !hasTodos && !hasAnyNote(day)) delete state.days[date];
   }
   function categoryList() {
     const base = ['锚点卡', '探索卡', '建设卡', '破冰卡', '推进卡', '表达卡'];
@@ -1732,46 +1940,26 @@
     if (currentTab === 'today') renderToday();
     else if (currentTab === 'diary') renderDiary();
     else if (currentTab === 'sleep') renderSleep();
+    else if (currentTab === 'ruqi') renderRuqi();
     else if (currentTab === 'settings') renderSettings();
   }
 
   // ---------- today ----------
   function renderToday() {
     const day = getDay(viewDate);
-    const activeCards = state.cards.filter(c => !c.archived);
-    const totalCards = activeCards.length;
-    const doneCount = activeCards.filter(c => hasKey(day.done, c.id)).length;
+    const todos = Array.isArray(day.todos) ? day.todos : [];
+    const doneCount = todos.filter(todo => todo.done).length;
+    const totalTodos = todos.length;
     const isToday = viewDate === todayISO();
     const sleep = sleepFor(viewDate);
-    const groups = categoryList().map(cat => {
-      const cards = cardsIn(cat).concat(
-        cardsIn(cat, true).filter(c => c.archived && hasKey(day.done, c.id))
-      );
-      if (!cards.length) return '';
-      const catDone = cards.filter(c => hasKey(day.done, c.id)).length;
-      return `
-        <div class="group">
-          <div class="group-head">
-            <span class="group-name">${esc(cat)}</span>
-            <span class="group-line"></span>
-            <span class="group-count">${catDone}/${cards.length}</span>
-          </div>
-          <div class="card-list">
-            ${cards.map(card => {
-              const done = hasKey(day.done, card.id);
-              const detail = done ? (day.done[card.id] || '') : '';
-              return `
-                <div class="card-row ${done ? 'done' : ''} ${card.archived ? 'archived' : ''}" data-card="${esc(card.id)}">
-                  <button class="check" ${card.archived ? 'disabled' : `data-toggle="${esc(card.id)}"`} aria-label="${done ? '取消' : '勾选'}${esc(card.name)}" aria-pressed="${done}">${ICON.check}</button>
-                  <div class="card-main">
-                    <button class="card-name" data-card-history="${esc(card.id)}">${esc(card.name)}${card.archived ? '<span class="archived-mark">已删除</span>' : ''}<span class="history-arrow">›</span></button>
-                    ${done ? `<input class="detail-input" data-detail="${esc(card.id)}" value="${esc(detail)}" placeholder="${esc(placeholderFor(card))}" enterkeyhint="done" ${card.archived ? 'readonly' : ''}>` : ''}
-                  </div>
-                </div>`;
-            }).join('')}
-          </div>
-        </div>`;
-    }).join('');
+    const legacy = state.cards
+      .filter(card => hasKey(day.done || {}, card.id))
+      .map(card => ({
+        id: card.id,
+        name: card.name,
+        archived: !!card.archived,
+        detail: String(day.done[card.id] || '')
+      }));
 
     const noteSummary = NOTE_TYPES.map(type => {
       const text = noteText(day, type.key).trim();
@@ -1794,7 +1982,7 @@
         <label class="date-center" aria-label="选择要查看的日期">
           <input class="date-picker-native" id="datePicker" type="date" value="${esc(viewDate)}" max="${todayISO()}">
           <span class="date-main">${fmtFull(viewDate)}</span>
-          <span class="date-sub">${isToday ? '今天' : `勾选 ${Object.keys(day.done || {}).length} 张`} · 点此选日期</span>
+          <span class="date-sub">${isToday ? '今天' : `完成 ${doneCount}/${totalTodos}`} · 点此选日期</span>
         </label>
         <button class="date-btn" data-day="1" aria-label="后一天" ${isToday ? 'disabled' : ''}>${ICON.chevR}</button>
       </div>
@@ -1806,10 +1994,28 @@
         <button class="link-btn" data-go="sleep">${sleep ? '查看' : '去记录'}</button>
       </div>
       <div class="progress-wrap">
-        <div class="progress-track"><div class="progress-fill" style="width:${totalCards ? (doneCount / totalCards * 100) : 0}%"></div></div>
-        <div class="progress-text">${doneCount}/${totalCards}</div>
+        <div class="progress-track"><div class="progress-fill" style="width:${totalTodos ? (doneCount / totalTodos * 100) : 0}%"></div></div>
+        <div class="progress-text">${doneCount}/${totalTodos}</div>
       </div>
-      ${groups || '<div class="empty">还没有卡片。去「设置」里添加。</div>'}
+      <form class="todo-form" id="todoForm">
+        <input class="todo-input" id="todoInput" maxlength="500" autocomplete="off" enterkeyhint="done" placeholder="写一件要做的，回车添加">
+        <button class="todo-add-btn" type="submit" aria-label="添加待办">＋</button>
+      </form>
+      ${todos.length ? `
+        <div class="todo-list">
+          ${todos.map(todo => `
+            <div class="todo-row ${todo.done ? 'done' : ''}">
+              <button class="check" data-todo-toggle="${esc(todo.id)}" aria-label="${todo.done ? '取消完成' : '完成'}${esc(todo.text)}" aria-pressed="${todo.done}">${ICON.check}</button>
+              <div class="todo-main">
+                <button class="todo-title" data-todo-edit="${esc(todo.id)}">${esc(todo.text)}</button>
+                ${todo.note ? `<div class="todo-note">${esc(todo.note)}</div>` : ''}
+              </div>
+              <button class="todo-delete" data-todo-delete="${esc(todo.id)}" aria-label="删除待办">${ICON.x}</button>
+            </div>`).join('')}
+        </div>` : '<div class="empty">今天还没有待办。想一件，写在上面的框里。</div>'}
+      ${legacy.length ? `<button class="legacy-record" data-legacy-view>
+        <span>旧卡片记录 · ${legacy.length} 条</span><span>查看 ›</span>
+      </button>` : ''}
       <div class="note-head">
         <span class="note-label">${isToday ? '今日笔叙' : '当天笔叙'}</span>
         <button class="link-btn" data-go="diary" data-type="daily">全部笔叙 →</button>
@@ -1818,22 +2024,27 @@
       <div class="foot-line">${isToday ? '今天到这里就可以。' : ''}</div>
     `;
 
-    $('#view-today').querySelectorAll('[data-toggle]').forEach(btn => {
-      btn.addEventListener('click', () => toggleCard(btn.dataset.toggle));
+    $('#todoForm').addEventListener('submit', event => {
+      event.preventDefault();
+      const input = $('#todoInput');
+      const text = input.value.trim();
+      if (!text) return;
+      addTodo(text);
     });
-    $('#view-today').querySelectorAll('[data-card-history]').forEach(btn => {
-      btn.addEventListener('click', () => openCardHistory(btn.dataset.cardHistory));
+    $('#view-today').querySelectorAll('[data-todo-toggle]').forEach(btn => {
+      btn.addEventListener('click', () => toggleTodo(btn.dataset.todoToggle));
+    });
+    $('#view-today').querySelectorAll('[data-todo-edit]').forEach(btn => {
+      btn.addEventListener('click', () => openTodoEditor(btn.dataset.todoEdit));
+    });
+    $('#view-today').querySelectorAll('[data-todo-delete]').forEach(btn => {
+      btn.addEventListener('click', () => deleteTodo(btn.dataset.todoDelete));
+    });
+    $('#view-today').querySelectorAll('[data-legacy-view]').forEach(btn => {
+      btn.addEventListener('click', () => openLegacyRecords());
     });
     $('#view-today').querySelectorAll('[data-note-type]').forEach(btn => {
       btn.addEventListener('click', () => openDiaryEditor(viewDate, btn.dataset.noteType));
-    });
-    $('#view-today').querySelectorAll('[data-detail]').forEach(inp => {
-      inp.addEventListener('input', () => {
-        const d = getDay(viewDate, true);
-        d.done[inp.dataset.detail] = inp.value;
-        scheduleSave();
-      });
-      inp.addEventListener('keydown', e => { if (e.key === 'Enter') inp.blur(); });
     });
     $('#view-today').querySelectorAll('[data-day]').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -1859,50 +2070,109 @@
     });
   }
 
-  function toggleCard(id) {
-    const card = state.cards.find(c => c.id === id);
-    if (!card || card.archived) return;
+  function addTodo(text) {
+    addTodoForDate(viewDate, text);
+    renderToday();
+  }
+
+  function addTodoForDate(date, text) {
+    const day = getDay(date, true);
+    day.todos.push({
+      id: newId('todo'),
+      text: String(text).trim().slice(0, 500),
+      note: '',
+      done: false,
+      createdAt: nowStamp(),
+      completedAt: ''
+    });
+    saveNow();
+    return day.todos[day.todos.length - 1];
+  }
+
+  function toggleTodo(id) {
     const day = getDay(viewDate, true);
-    if (hasKey(day.done, id)) delete day.done[id];
-    else day.done[id] = '';
+    const todo = day.todos.find(item => item.id === id);
+    if (!todo) return;
+    todo.done = !todo.done;
+    todo.completedAt = todo.done ? nowStamp() : '';
+    saveNow();
+    renderToday();
+  }
+
+  function openTodoEditor(id) {
+    const day = getDay(viewDate, true);
+    const todo = day.todos.find(item => item.id === id);
+    if (!todo) return;
+    openSheet({
+      title: '改待办',
+      body: `
+        <div class="field">
+          <label>要做什么</label>
+          <textarea class="input" id="todoEditText" maxlength="500">${esc(todo.text)}</textarea>
+        </div>
+        <div class="field">
+          <label>补充（可选）</label>
+          <textarea class="input" id="todoEditNote" maxlength="3000" placeholder="范围、地点、做到哪里…">${esc(todo.note)}</textarea>
+        </div>
+        <div class="hint sheet-hint">留空删除待办；按日期保存，不会影响其他天。</div>
+      `,
+      actions: [
+        {
+          label: '删除',
+          cls: 'btn danger',
+          onClick: async () => {
+            if (!confirm('删除这条待办？')) return false;
+            const index = day.todos.findIndex(item => item.id === id);
+            if (index >= 0) day.todos.splice(index, 1);
+            cleanupDay(viewDate);
+            await saveNow();
+            renderToday();
+            return true;
+          }
+        },
+        {
+          label: '保存',
+          cls: 'btn primary',
+          onClick: async () => {
+            const text = $('#todoEditText').value.trim();
+            if (!text) { toast('写一点再保存'); return false; }
+            todo.text = text.slice(0, 500);
+            todo.note = $('#todoEditNote').value.trim().slice(0, 3000);
+            await saveNow();
+            renderToday();
+            return true;
+          }
+        }
+      ]
+    });
+  }
+
+  function deleteTodo(id) {
+    const day = getDay(viewDate, true);
+    const todo = day.todos.find(item => item.id === id);
+    if (!todo) return;
+    if (!confirm(`删除「${todo.text}」？`)) return;
+    day.todos = day.todos.filter(item => item.id !== id);
     cleanupDay(viewDate);
     saveNow();
     renderToday();
   }
 
-  function openCardHistory(id) {
-    const card = state.cards.find(c => c.id === id);
-    if (!card) return;
-    const entries = Object.entries(state.days)
-      .filter(([, day]) => hasKey(day.done || {}, id))
-      .sort((a, b) => b[0].localeCompare(a[0]));
+  function openLegacyRecords() {
+    const day = getDay(viewDate);
+    const rows = state.cards
+      .filter(card => hasKey(day.done || {}, card.id))
+      .map(card => ({ card, detail: String(day.done[card.id] || '') }));
     openSheet({
-      title: `${card.name} · 历史`,
-      body: `
-        <div class="hint sheet-hint" style="margin:0 0 10px">
-          ${card.archived ? '这张卡已删除，但以前的勾选记录仍然保留。' : `共勾选 ${entries.length} 天。点日期可以看那天的全部内容。`}
-        </div>
-        ${entries.length ? `
-          <div class="history-list">
-            ${entries.map(([date, day]) => {
-              const detail = String(day.done[id] || '').trim();
-              return `<button class="history-item" data-history-date="${esc(date)}">
-                <b>${fmtFull(date)}${date === todayISO() ? ' · 今天' : ''}</b>
-                <span>${detail ? esc(detail) : '已勾选'}</span>
-              </button>`;
-            }).join('')}
-          </div>` : '<div class="empty">还没有勾选记录。</div>'}
-      `,
-      actions: [{ label: '关闭', cls: 'btn ghost', onClick: () => true }],
-      onMount: root => {
-        root.querySelectorAll('[data-history-date]').forEach(btn => {
-          btn.addEventListener('click', () => {
-            viewDate = btn.dataset.historyDate;
-            closeSheet();
-            switchTab('today');
-          });
-        });
-      }
+      title: `${fmtDate(viewDate)} · 旧卡片`,
+      body: rows.length
+        ? `<div class="history-list">${rows.map(({ card, detail }) => `
+            <div class="history-item">
+              <b>${esc(card.name)}${card.archived ? ' · 已删除' : ''}</b>
+              <span>${detail ? esc(detail) : '当时已勾选'}</span>
+            </div>`).join('')}</div>`
+        : '<div class="empty">这天没有旧卡片记录。</div>',
+      actions: [{ label: '关闭', cls: 'btn ghost', onClick: () => true }]
     });
   }
 
@@ -2068,6 +2338,237 @@
     });
   }
 
+  // ---------- ruqi ----------
+  function buildRuqiContext() {
+    const cardNames = new Map(state.cards.map(card => [card.id, card.name]));
+    const days = Object.entries(state.days)
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([date, day]) => ({
+        date,
+        todos: (day.todos || []).map(todo => ({
+          text: todo.text,
+          note: String(todo.note || '').slice(0, 1000),
+          done: !!todo.done
+        })),
+        legacyCards: Object.entries(day.done || {}).map(([id, detail]) => ({
+          name: cardNames.get(id) || id,
+          detail: String(detail || '')
+        })),
+        notes: Object.fromEntries(Object.entries(day.notes || {})
+          .filter(([, text]) => String(text || '').trim())
+          .map(([type, text]) => [type, String(text).slice(0, 3000)]))
+      }));
+    return {
+      today: todayISO(),
+      currentViewDate: viewDate,
+      cards: state.cards.map(card => ({
+        name: card.name,
+        category: card.category,
+        archived: !!card.archived
+      })),
+      days,
+      sleep: state.sleep
+        .slice()
+        .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')))
+        .slice(-180)
+    };
+  }
+
+  async function loadRuqiSealed() {
+    const token = cloudConfig?.token || ruqiLocalKey;
+    if (!token) throw new Error('需要恢复密钥才能解锁如期');
+    if (!ruqiSealedPromise) {
+      ruqiSealedPromise = (async () => {
+        const response = await fetch(RUQI_SEALED_URL, { cache: 'no-store' });
+        if (!response.ok) throw new Error('如期配置没有加载');
+        const document = await response.json();
+        const key = await deriveCloudKey(token);
+        const plain = await crypto.subtle.decrypt(
+          { name: 'AES-GCM', iv: base64UrlToBytes(document.iv) },
+          key,
+          base64UrlToBytes(document.ciphertext)
+        );
+        return JSON.parse(new TextDecoder().decode(plain));
+      })().catch(error => {
+        ruqiSealedPromise = null;
+        throw error;
+      });
+    }
+    return ruqiSealedPromise;
+  }
+
+  function ruqiSystemPrompt(sealed, context) {
+    return `${sealed.persona}
+
+## 在枝下青网站里工作的补充规则
+
+- 青已经明确授权你读取她交来的全部枝下青记录。不要反问能否读取，也不要假装自己只看见摘要。
+- 下面是青当前的待办、旧卡片勾选、笔叙、睡眠和卡片目录。回答具体问题时以这些记录为依据；做观察时尽量带日期。
+- 如果记录不足，直说不知道，不补写不存在的事件。
+- 你可以陪聊、梳理、劝停空耗、催她做具体的下一件事。给建议时一次只留少量选择，别把她当成小孩，也别用羞耻推动。
+- 直接把内容当作背景，不要为了证明“我懂你”而搬出隐私细节。她问起再说。
+- 多数回答保持三到六句，像聊天，不像报告。需要整理时才用很短的分点。
+- 若提出一件可执行的待办，在最后单独写一行“待办建议：……”，只写一件。
+
+当前日期：${todayISO()}
+
+## 枝下青记录
+
+${JSON.stringify(context).slice(0, 80000)}`;
+  }
+
+  async function sendRuqiMessage(text) {
+    const message = String(text || '').trim().slice(0, 4000);
+    if (!message || ruqiSending) return;
+    if (!cloudConfig?.token && !ruqiLocalKey) {
+      toast('先输入恢复密钥，如期才能读记录和回复');
+      return;
+    }
+
+    state.ruqi.messages.push({ role: 'user', text: message, at: nowStamp() });
+    state.ruqi.messages = state.ruqi.messages.slice(-RUQI_HISTORY_LIMIT);
+    ruqiDraft = '';
+    ruqiError = '';
+    ruqiSending = true;
+    renderRuqi();
+    await saveNow();
+
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 70000);
+    try {
+      const sealed = await loadRuqiSealed();
+      const baseUrl = String(sealed.baseUrl || 'https://api.deepseek.com/v1').replace(/\/+$/, '');
+      const endpoint = baseUrl.endsWith('/chat/completions') ? baseUrl : `${baseUrl}/chat/completions`;
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${sealed.apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: sealed.model,
+          messages: [
+            { role: 'system', content: ruqiSystemPrompt(sealed, buildRuqiContext()) },
+            ...state.ruqi.messages.slice(-24, -1).map(item => ({
+              role: item.role,
+              content: item.text
+            }))
+          ],
+          temperature: 0.7,
+          max_tokens: 1000,
+          stream: false
+        }),
+        cache: 'no-store',
+        signal: ctrl.signal
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.error?.message || `chat_${response.status}`);
+      const reply = String(payload?.choices?.[0]?.message?.content || '').trim();
+      if (!reply) throw new Error('如期这次没有说出话');
+      state.ruqi.messages.push({ role: 'assistant', text: reply, at: nowStamp() });
+      state.ruqi.messages = state.ruqi.messages.slice(-RUQI_HISTORY_LIMIT);
+      await saveNow();
+    } catch (error) {
+      console.warn('如期回复失败', error);
+      ruqiError = error.name === 'AbortError'
+        ? '等太久了，刚才没有收到回复。可以再发一次。'
+        : '这次没有连上如期。记录还在，再试一次就好。';
+    } finally {
+      clearTimeout(timer);
+      ruqiSending = false;
+      renderRuqi();
+    }
+  }
+
+  function openRuqiUnlock() {
+    openSheet({
+      title: '解锁如期',
+      body: `
+        <div class="field">
+          <label>枝下青恢复密钥</label>
+          <input class="input" id="ruqiUnlockKey" type="password" autocomplete="off" placeholder="只保存在这台设备">
+        </div>
+        <div class="hint sheet-hint">这是云端同步使用的那串长密钥，只用于解开本地保存的如期人格与模型配置。</div>
+      `,
+      actions: [{
+        label: '解锁',
+        cls: 'btn primary',
+        onClick: () => {
+          const key = $('#ruqiUnlockKey').value.trim();
+          if (key.length < 20) { toast('恢复密钥太短'); return false; }
+          ruqiLocalKey = key;
+          ruqiSealedPromise = null;
+          try { localStorage.setItem(RUQI_KEY_KEY, key); } catch (e) {}
+          renderRuqi();
+          return true;
+        }
+      }]
+    });
+  }
+
+  function renderRuqi() {
+    const messages = state.ruqi.messages;
+    const messageHtml = messages.length
+      ? messages.map(message => `
+          <div class="ruqi-bubble ${message.role === 'user' ? 'user' : 'assistant'}">
+            ${esc(message.text)}
+            ${message.role === 'assistant' ? `<button class="ruqi-add-todo" data-bot-add-todo="${esc(message.text)}">加入今天待办</button>` : ''}
+          </div>`).join('')
+      : `<div class="ruqi-bubble assistant">我在。今天想先说哪一句？也可以让我看看最近，再替我挑一件今天做得动的事 ˃ᴗ˂</div>`;
+    $('#view-ruqi').innerHTML = `
+      <div class="page-head ruqi-head">
+        <div>
+          <h1 class="page-title">如期</h1>
+          <div class="page-sub">会读枝下青，也会催你，但不替你决定</div>
+        </div>
+      </div>
+      <div class="ruqi-intro">
+        提问时会把你的待办、笔叙、睡眠和旧卡片记录交给模型。聊到网页关闭以后，微信里的如期仍负责定时提醒。
+      </div>
+      <div class="ruqi-messages" id="ruqiMessages">
+        ${messageHtml}
+        ${ruqiSending ? '<div class="ruqi-bubble assistant">让我看看…</div>' : ''}
+        ${ruqiError ? `<div class="ruqi-bubble error">${esc(ruqiError)}</div>` : ''}
+      </div>
+      ${!cloudConfig?.token && !ruqiLocalKey ? '<button class="btn primary" id="ruqiUnlock" style="width:100%;margin-bottom:10px">输入恢复密钥，解锁如期</button>' : ''}
+      <div class="ruqi-quick">
+        <button data-ruqi-quick="我最近怎么了？">我最近怎么了</button>
+        <button data-ruqi-quick="看今天的状态，给我安排两三件做得动的事，具体一点。">今天做什么</button>
+        <button data-ruqi-quick="只陪我聊一会儿，不讲道理，也先不安排任务。">陪我一会儿</button>
+      </div>
+      <form class="ruqi-composer" id="ruqiForm">
+        <textarea id="ruqiInput" maxlength="4000" enterkeyhint="send" placeholder="和如期说点什么…">${esc(ruqiDraft)}</textarea>
+        <button class="ruqi-send" type="submit" ${ruqiSending ? 'disabled' : ''}>发送</button>
+      </form>
+    `;
+
+    const input = $('#ruqiInput');
+    input.addEventListener('input', () => {
+      ruqiDraft = input.value;
+      input.style.height = 'auto';
+      input.style.height = `${Math.min(input.scrollHeight, 120)}px`;
+    });
+    $('#ruqiForm').addEventListener('submit', event => {
+      event.preventDefault();
+      void sendRuqiMessage(input.value);
+    });
+    $('#view-ruqi').querySelectorAll('[data-ruqi-quick]').forEach(btn => {
+      btn.addEventListener('click', () => void sendRuqiMessage(btn.dataset.ruqiQuick));
+    });
+    const unlock = $('#ruqiUnlock');
+    if (unlock) unlock.addEventListener('click', openRuqiUnlock);
+    $('#view-ruqi').querySelectorAll('[data-bot-add-todo]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        addTodoForDate(todayISO(), btn.dataset.botAddTodo);
+        toast('已加入今天待办');
+      });
+    });
+    requestAnimationFrame(() => {
+      const last = $('#ruqiMessages')?.lastElementChild;
+      if (last) last.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    });
+  }
+
   // ---------- sleep ----------
   function renderSleep() {
     const rows = sleepRows();
@@ -2215,55 +2716,13 @@
 
   // ---------- settings ----------
   function renderSettings() {
-    const cats = categoryList();
-    const archived = archivedCards();
     const theme = state.settings.theme;
     $('#view-settings').innerHTML = `
       <div class="page-head">
         <div>
           <h1 class="page-title">设置</h1>
-          <div class="page-sub">卡片、同步、外观</div>
+          <div class="page-sub">同步、外观、数据</div>
         </div>
-      </div>
-
-      <div class="section">
-        <div class="section-title">卡片</div>
-        <div class="panel">
-          ${cats.map(cat => {
-            const cards = cardsIn(cat);
-            if (!cards.length) return '';
-            return `
-              <div class="cat-block">
-                <div class="cat-head"><span>${esc(cat)}</span><span>${cards.length}</span></div>
-                ${cards.map(card => `
-                  <div class="setting-row card-setting">
-                    <div class="label">${esc(card.name)}</div>
-                    <div class="row-actions">
-                      <button class="mini" data-edit-card="${esc(card.id)}">改</button>
-                      <button class="mini danger" data-del-card="${esc(card.id)}">删</button>
-                    </div>
-                  </div>`).join('')}
-              </div>`;
-          }).join('')}
-          ${archived.length ? `
-            <div class="cat-block archived-cards">
-              <div class="cat-head"><span>已删除的卡片</span><span>${archived.length}</span></div>
-              ${archived.map(card => `
-                <div class="setting-row card-setting">
-                  <div>
-                    <div class="label">${esc(card.name)}</div>
-                    <div class="desc">历史勾选记录已保留</div>
-                  </div>
-                  <div class="row-actions">
-                    <button class="mini" data-restore-card="${esc(card.id)}">恢复</button>
-                  </div>
-                </div>`).join('')}
-            </div>` : ''}
-          <div class="setting-row add-card-row">
-            <button class="btn ghost" id="addCard">＋ 添加卡片</button>
-          </div>
-        </div>
-        <div class="hint">删除只会把卡片移出列表，以前的勾选和补充记录都会保留。</div>
       </div>
 
       <div class="section">
@@ -2301,10 +2760,10 @@
         <div class="section-title">其他</div>
         <div class="panel">
           <div class="setting-row">
-            <div><div class="label">枝下青 · 手机版</div><div class="desc">版本 1.6 · 自动保存已开启</div></div>
+            <div><div class="label">枝下青 · 手机版</div><div class="desc">版本 2.0 · 自由待办与如期</div></div>
           </div>
           <button class="setting-row action-row danger" id="resetAll">
-            <span><span class="label">清空全部数据</span><span class="desc">恢复成初始卡片和已经带入的内容</span></span>
+            <span><span class="label">清空全部数据</span><span class="desc">本机和云端记录都会清空</span></span>
             <span class="chev">清空</span>
           </button>
         </div>
@@ -2315,19 +2774,6 @@
 
   function bindSettings() {
     const view = $('#view-settings');
-    $('#addCard').addEventListener('click', () => openCardEditor(null));
-    view.querySelectorAll('[data-edit-card]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const card = state.cards.find(c => c.id === btn.dataset.editCard);
-        if (card) openCardEditor(card);
-      });
-    });
-    view.querySelectorAll('[data-del-card]').forEach(btn => {
-      btn.addEventListener('click', () => deleteCard(btn.dataset.delCard));
-    });
-    view.querySelectorAll('[data-restore-card]').forEach(btn => {
-      btn.addEventListener('click', () => restoreCard(btn.dataset.restoreCard));
-    });
     view.querySelectorAll('#themeSeg [data-theme]').forEach(btn => {
       btn.addEventListener('click', () => {
         state.settings.theme = btn.dataset.theme;
@@ -2511,14 +2957,15 @@
       title: '这是你的手机版',
       body: `
         <div class="welcome">
-          <p>这里<strong>不抽卡</strong>。你做了哪张，就自己勾哪张。</p>
-          <p>下面四个页面：<br>
-            <b>今天</b> 勾选做了什么，写一句日常；<br>
+          <p>这里不预设任务。想做什么，就在当天<strong>自由写一条待办</strong>；做完再勾。</p>
+          <p>下面五个页面：<br>
+            <b>今天</b> 自由待办、三类笔叙和旧卡片记录；<br>
             <b>笔叙</b> 输出 / 日常 / 摘录，三种分开写；<br>
             <b>睡眠</b> 自己记睡眠饮食；<br>
-            <b>设置</b> 添加、恢复和管理卡片。</p>
-          <p>正文边写边存，改动会自动保存在这台手机的浏览器里。点日期可以直接选过去的一天；点卡片名字可以看它以前勾选过哪些日期。</p>
-          <p class="welcome-soft">删除卡片只会把它移出列表，以前的勾选和补充记录都会保留。</p>
+            <b>如期</b> 读记录、陪聊、帮你挑下一件事；<br>
+            <b>设置</b> 云同步、外观和数据。</p>
+          <p>正文边写边存，改动会自动保存在这台手机的浏览器里。点日期可以直接选过去的一天。</p>
+          <p class="welcome-soft">旧卡片和旧勾选仍在对应日期里，只读保留，不会丢。</p>
           <p class="welcome-soft">想让手机和电脑共用一份数据，可在「设置 → 云同步」连接私人加密同步。</p>
         </div>
       `,

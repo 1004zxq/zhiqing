@@ -1,19 +1,24 @@
 'use strict';
 
 const crypto = require('node:crypto');
+const fs = require('node:fs');
 const http = require('node:http');
+const path = require('node:path');
 const cloudbase = require('@cloudbase/node-sdk');
 
 const app = cloudbase.init({ env: cloudbase.SYMBOL_CURRENT_ENV });
 const rdb = app.rdb();
 const DOCUMENT_ID = 'main';
 const MAX_BODY_BYTES = 2_000_000;
+let personaCache = '';
 
 function corsHeaders(event) {
   const headers = event.headers || {};
   const origin = headers.origin || headers.Origin || '';
   const allowed = [
     'https://1004zxq.github.io',
+    'http://greenbranch.local:8765',
+    'http://10.94.129.90:8765',
     'http://127.0.0.1:8890',
     'http://localhost:8890'
   ];
@@ -23,7 +28,7 @@ function corsHeaders(event) {
   return {
     'Access-Control-Allow-Origin': allowed.includes(origin) || trustedCloudBaseOrigin ? origin : allowed[0],
     'Access-Control-Allow-Headers': 'Authorization, Content-Type',
-    'Access-Control-Allow-Methods': 'GET, PUT, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS',
     'Access-Control-Max-Age': '86400',
     'Vary': 'Origin',
     'Cache-Control': 'no-store'
@@ -89,6 +94,101 @@ function validPayload(body) {
     body.clientUpdatedAt > 0;
 }
 
+function cleanHistory(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter(item => item && (item.role === 'user' || item.role === 'assistant'))
+    .slice(-12)
+    .map(item => ({
+      role: item.role,
+      text: String(item.text || '').slice(0, 1200)
+    }))
+    .filter(item => item.text.trim());
+}
+
+function chatSystemPrompt(context) {
+  if (!personaCache) {
+    try {
+      personaCache = fs.readFileSync(path.join(__dirname, 'persona.local.md'), 'utf8').trim();
+    } catch (error) {
+      personaCache = '你是如期。接住青，不冒充她，不说教；回答短、真、有来有回。';
+    }
+  }
+  const contextText = JSON.stringify(context || {}).slice(0, 80000);
+  return `${personaCache}
+
+## 在枝下青网站里工作的补充规则
+
+- 青已经明确授权你读取她交来的全部枝下青记录。不要反问能否读取，也不要假装自己只看见摘要。
+- 下面是青当前的待办、旧卡片勾选、笔叙、睡眠和卡片目录。回答具体问题时以这些记录为依据；做观察时尽量带日期。
+- 如果记录不足，直说不知道，不补写不存在的事件。
+- 你可以陪聊、梳理、劝停空耗、催她做具体的下一件事。给建议时一次只留少量选择，别把她当成小孩，也别用羞耻推动。
+- 直接把内容当作背景，不要为了证明“我懂你”而搬出隐私细节。她问起再说。
+- 多数回答保持三到六句，像聊天，不像报告。需要整理时才用很短的分点。
+- 若提出一件可执行的待办，在最后单独写一行“待办建议：……”，只写一件。
+
+当前日期：${new Date().toLocaleDateString('zh-CN', { timeZone: 'Asia/Shanghai' })}
+
+## 枝下青记录
+
+${contextText}`;
+}
+
+async function replyWithRuqi(body) {
+  const apiKey = String(process.env.CHAT_API_KEY || '').trim();
+  if (!apiKey) {
+    const error = new Error('chat_not_configured');
+    error.status = 503;
+    throw error;
+  }
+  const message = String(body.message || '').trim().slice(0, 4000);
+  if (!message) {
+    const error = new Error('empty_message');
+    error.status = 400;
+    throw error;
+  }
+  const baseUrl = String(process.env.CHAT_BASE_URL || 'https://api.deepseek.com/v1').replace(/\/+$/, '');
+  const endpoint = baseUrl.endsWith('/chat/completions') ? baseUrl : `${baseUrl}/chat/completions`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 55000);
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: process.env.CHAT_MODEL || 'deepseek-flash',
+        messages: [
+          { role: 'system', content: chatSystemPrompt(body.context) },
+          ...cleanHistory(body.history),
+          { role: 'user', content: message }
+        ],
+        temperature: 0.7,
+        max_tokens: 1000,
+        stream: false
+      }),
+      signal: controller.signal
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const error = new Error(payload?.error?.message || payload?.message || 'model_failed');
+      error.status = 502;
+      throw error;
+    }
+    const reply = String(payload?.choices?.[0]?.message?.content || '').trim();
+    if (!reply) {
+      const error = new Error('empty_model_reply');
+      error.status = 502;
+      throw error;
+    }
+    return reply;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function recordResponse(record) {
   return {
     ciphertext: record.ciphertext,
@@ -146,6 +246,27 @@ exports.main = async event => {
   }
 
   try {
+    if (path === '/chat' || path.endsWith('/chat')) {
+      if (method !== 'POST') {
+        return response(event, 405, { error: 'method_not_allowed' });
+      }
+      let body;
+      try {
+        body = parseBody(event);
+      } catch (error) {
+        return response(event, error.status || 400, { error: error.message || 'bad_payload' });
+      }
+      try {
+        const reply = await replyWithRuqi(body);
+        return response(event, 200, { ok: true, reply });
+      } catch (error) {
+        if (error.status !== 502 && error.status !== 503) console.error('zhiqing-chat failed', error.message);
+        return response(event, error.status || 500, {
+          error: error.status === 502 ? 'model_failed' : error.message
+        });
+      }
+    }
+
     if (method === 'GET') {
       const record = await readRecord();
       if (!record) return response(event, 200, { empty: true, revision: 0 });
