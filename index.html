@@ -3036,7 +3036,13 @@ ${JSON.stringify(context).slice(0, 80000)}`;
 </script>
 <script>
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
-  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
+    let swRefreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (swRefreshing) return;
+    swRefreshing = true;
+    location.reload();
+  });
+  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js?v=13').catch(() => {}));
 }
 </script>
 </body>
