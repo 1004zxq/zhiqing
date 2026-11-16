@@ -5,7 +5,7 @@
 <title>刷新枝下青</title>
 <body style="font:15px/1.7 system-ui,sans-serif;padding:24px;color:#23433a">
 <p>正在刷新枝下青…</p>
-<p>如果没自动跳转，<a href="./?v=14">点这里</a>。</p>
+<p>如果没自动跳转，<a href="./?v=15">点这里</a>。</p>
 <script>
 (async () => {
   try {
@@ -20,7 +20,7 @@
       await Promise.all(keys.filter(key => key.startsWith('zhiqing-static-')).map(key => caches.delete(key)));
     }
   } catch (error) {}
-  location.replace('./?v=14&fresh=' + Date.now());
+  location.replace('./?v=15&fresh=' + Date.now());
 })();
 </script>
 </body>
