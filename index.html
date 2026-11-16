@@ -2545,7 +2545,7 @@ ${JSON.stringify(context).slice(0, 80000)}`;
         <button data-ruqi-quick="只陪我聊一会儿，不讲道理，也先不安排任务。">陪我一会儿</button>
       </div>
       <form class="ruqi-composer" id="ruqiForm">
-        <textarea id="ruqiInput" maxlength="4000" enterkeyhint="send" placeholder="和如期说点什么…">${esc(ruqiDraft)}</textarea>
+        <textarea id="ruqiInput" rows="1" maxlength="4000" enterkeyhint="send" placeholder="和如期说点什么…">${esc(ruqiDraft)}</textarea>
         <button class="ruqi-send" type="submit" ${ruqiSending ? 'disabled' : ''}>发送</button>
       </form>
     `;
@@ -2553,8 +2553,8 @@ ${JSON.stringify(context).slice(0, 80000)}`;
     const input = $('#ruqiInput');
     input.addEventListener('input', () => {
       ruqiDraft = input.value;
-      input.style.height = 'auto';
-      input.style.height = `${Math.min(input.scrollHeight, 120)}px`;
+      input.style.height = '40px';
+      input.style.height = `${Math.min(Math.max(input.scrollHeight, 40), 120)}px`;
     });
     $('#ruqiForm').addEventListener('submit', event => {
       event.preventDefault();
@@ -3043,7 +3043,7 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.
     swRefreshing = true;
     location.reload();
   });
-  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js?v=14').catch(() => {}));
+  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js?v=15').catch(() => {}));
 }
 </script>
 </body>
