@@ -17,4 +17,6 @@ v2.0 起支持腾讯云 CloudBase 加密同步与如期对话：
 - 如期会读取你交给它的记录，陪你聊，也可以给出具体待办建议。
 
 同步服务地址：
-https://zhixiaqing-d7g8gdumr9afe7aff-1522022232.ap-shanghai.app.tcloudbase.com
+https://43.143.82.198
+
+已有设备请在「设置 → 云同步」把地址改成上面的地址，同步密钥保持不变。
