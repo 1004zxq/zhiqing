@@ -733,7 +733,7 @@
     transform: translateX(-50%);
     z-index: 30;
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     width: 100%;
     max-width: 640px;
     padding: 6px 6px calc(6px + env(safe-area-inset-bottom));
@@ -915,6 +915,7 @@
       <section class="view active" id="view-today" data-view="today"><div class="loading">正在打开…</div></section>
       <section class="view" id="view-diary" data-view="diary"></section>
       <section class="view" id="view-sleep" data-view="sleep"></section>
+      <section class="view" id="view-ruqi" data-view="ruqi"></section>
       <section class="view" id="view-settings" data-view="settings"></section>
     </main>
   </div>
@@ -931,6 +932,10 @@
     <button class="tab" data-tab="sleep">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5z"/></svg>
       <span>睡眠</span>
+    </button>
+    <button class="tab" data-tab="ruqi">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5h16v10H9l-4.5 3v-3H4z"/><path d="M8 9h8M8 12h5"/></svg>
+      <span>如期</span>
     </button>
     <button class="tab" data-tab="settings">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h9M18 7h2M4 17h2M11 17h9"/><circle cx="15.5" cy="7" r="2.2"/><circle cx="8.5" cy="17" r="2.2"/></svg>
@@ -1295,6 +1300,7 @@
 
   const hadStore = (() => { try { return !!localStorage.getItem(STORE); } catch (e) { return false; } })();
   let state = loadState();
+  if (!state.ruqi || !Array.isArray(state.ruqi.messages)) state.ruqi = { messages: [] };
   let currentTab = 'today';
   let viewDate = todayISO();
   let diarySearch = '';
@@ -2763,7 +2769,7 @@ ${JSON.stringify(context).slice(0, 80000)}`;
         <div class="section-title">其他</div>
         <div class="panel">
           <div class="setting-row">
-            <div><div class="label">枝下青 · 手机版</div><div class="desc">版本 2.0 · 自由待办</div></div>
+            <div><div class="label">枝下青 · 手机版</div><div class="desc">版本 2.0 · 自由待办与如期</div></div>
           </div>
           <button class="setting-row action-row danger" id="resetAll">
             <span><span class="label">清空全部数据</span><span class="desc">本机和云端记录都会清空</span></span>
@@ -2961,10 +2967,11 @@ ${JSON.stringify(context).slice(0, 80000)}`;
       body: `
         <div class="welcome">
           <p>这里不预设任务。想做什么，就在当天<strong>自由写一条待办</strong>；做完再勾。</p>
-          <p>下面四个页面：<br>
+          <p>下面五个页面：<br>
             <b>今天</b> 自由待办、三类笔叙和旧卡片记录；<br>
             <b>笔叙</b> 输出 / 日常 / 摘录，三种分开写；<br>
             <b>睡眠</b> 自己记睡眠饮食；<br>
+            <b>如期</b> 读记录、陪聊、帮你挑下一件事；<br>
             <b>设置</b> 云同步、外观和数据。</p>
           <p>正文边写边存，改动会自动保存在这台手机的浏览器里。点日期可以直接选过去的一天。</p>
           <p class="welcome-soft">旧卡片和旧勾选仍在对应日期里，只读保留，不会丢。</p>
@@ -3037,7 +3044,7 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.
     swRefreshing = true;
     location.reload();
   });
-  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js?v=15').catch(() => {}));
+  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js?v=16').catch(() => {}));
 }
 </script>
 </body>
