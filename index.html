@@ -959,10 +959,11 @@
   const SNAPSHOT_GAP = 60 * 1000;
   const CLOUD_CONFIG_KEY = 'zhiqing.cloud.v1';
   const CLOUD_DIRTY_KEY = 'zhiqing.cloud.dirty';
-  const RUQI_KEY_KEY = 'zhiqing.ruqi.key';
-    const CLOUD_DEFAULT_URL = 'https://43.143.82.198';
+  const CLOUD_DEFAULT_URL = 'https://43.143.82.198';
+  const RUQI_API_BASE = 'https://43.143.82.198/api/ruqi';
+  const RUQI_WEB_TOKEN_KEY = 'zhiqing.ruqi.webToken';
+  const RUQI_IMPORT_FLAG = 'zhiqing.ruqi.imported';
   const RUQI_HISTORY_LIMIT = 40;
-  const RUQI_SEALED_URL = './ruqi-sealed.json';
   const WEEK = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
   const NOTE_TYPES = [
     { key: 'output', label: '输出', hint: '主动写的文字', unit: '篇', placeholder: '主动写的文字。想法、一段话、一首歌…', empty: '主动写的文字，写一段就存下来。' },
@@ -1312,9 +1313,14 @@
   let ruqiSending = false;
   let ruqiError = '';
   let ruqiDraft = '';
-  let ruqiSealedPromise = null;
-  let ruqiLocalKey = (() => {
-    try { return localStorage.getItem(RUQI_KEY_KEY) || ''; } catch (e) { return ''; }
+  let ruqiWebToken = (() => {
+    try { return localStorage.getItem(RUQI_WEB_TOKEN_KEY) || ''; } catch (e) { return ''; }
+  })();
+  let ruqiMessages = [];
+  let ruqiHistoryLoading = false;
+  let ruqiHistoryFetchedAt = 0;
+  let ruqiImported = (() => {
+    try { return localStorage.getItem(RUQI_IMPORT_FLAG) === '1'; } catch (e) { return false; }
   })();
 
   function writeLocalCopy(json) {
@@ -1937,6 +1943,7 @@
     $$('.view').forEach(v => v.classList.toggle('active', v.dataset.view === tab));
     $$('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
     renderCurrent();
+    if (tab === 'ruqi') maybeLoadRuqiHistory();
     window.scrollTo({ top: 0, behavior: 'auto' });
   }
   function renderAll() {
@@ -2347,142 +2354,154 @@
   }
 
   // ---------- ruqi ----------
-  function buildRuqiContext() {
+  // 只给这一次网页请求的摘要；服务器不会把它写进记忆，微信也看不到。
+  function buildRuqiRecords() {
     const cardNames = new Map(state.cards.map(card => [card.id, card.name]));
-    const days = Object.entries(state.days)
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([date, day]) => ({
-        date,
-        todos: (day.todos || []).map(todo => ({
-          text: todo.text,
-          note: String(todo.note || '').slice(0, 1000),
-          done: !!todo.done
-        })),
-        legacyCards: Object.entries(day.done || {}).map(([id, detail]) => ({
-          name: cardNames.get(id) || id,
-          detail: String(detail || '')
-        })),
-        notes: Object.fromEntries(Object.entries(day.notes || {})
-          .filter(([, text]) => String(text || '').trim())
-          .map(([type, text]) => [type, String(text).slice(0, 3000)]))
-      }));
-    return {
-      today: todayISO(),
-      currentViewDate: viewDate,
-      cards: state.cards.map(card => ({
-        name: card.name,
-        category: card.category,
-        archived: !!card.archived
-      })),
-      days,
-      sleep: state.sleep
-        .slice()
-        .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')))
-        .slice(-180)
-    };
-  }
-
-  async function loadRuqiSealed() {
-    const token = cloudConfig?.token || ruqiLocalKey;
-    if (!token) throw new Error('需要恢复密钥才能解锁如期');
-    if (!ruqiSealedPromise) {
-      ruqiSealedPromise = (async () => {
-        const response = await fetch(RUQI_SEALED_URL, { cache: 'no-store' });
-        if (!response.ok) throw new Error('如期配置没有加载');
-        const document = await response.json();
-        const key = await deriveCloudKey(token);
-        const plain = await crypto.subtle.decrypt(
-          { name: 'AES-GCM', iv: base64UrlToBytes(document.iv) },
-          key,
-          base64UrlToBytes(document.ciphertext)
-        );
-        return JSON.parse(new TextDecoder().decode(plain));
-      })().catch(error => {
-        ruqiSealedPromise = null;
-        throw error;
-      });
+    const lines = [];
+    const today = todayISO();
+    for (let offset = 0; offset < 4; offset += 1) {
+      const date = addDays(today, -offset);
+      const day = state.days[date];
+      if (!day) continue;
+      const parts = [];
+      for (const todo of (day.todos || []).slice(0, 20)) {
+        const text = String(todo.text || '').trim();
+        if (!text) continue;
+        const note = String(todo.note || '').trim();
+        parts.push('- 待办 ' + (todo.done ? '[x]' : '[ ]') + ' ' + text + (note ? '（' + note.slice(0, 120) + '）' : ''));
+      }
+      for (const pair of [['output', '输出'], ['daily', '日常'], ['quote', '摘录']]) {
+        const text = String((day.notes || {})[pair[0]] || '').trim();
+        if (text) parts.push('- 笔叙·' + pair[1] + '：' + text.slice(0, 400));
+      }
+      for (const entry of Object.entries(day.done || {}).slice(0, 8)) {
+        parts.push('- 旧卡片：' + (cardNames.get(entry[0]) || entry[0]) + (entry[1] ? '（' + String(entry[1]).slice(0, 80) + '）' : ''));
+      }
+      if (parts.length) lines.push(date + (date === today ? '（今天）' : '') + '：', ...parts);
     }
-    return ruqiSealedPromise;
+    const sleep = state.sleep
+      .slice()
+      .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')))
+      .slice(-3);
+    if (sleep.length) {
+      lines.push('最近睡眠：');
+      for (const item of sleep) {
+        const bits = [];
+        if (item.date) bits.push(item.date);
+        if (item.night) bits.push('夜间 ' + item.night);
+        if (item.nap) bits.push('补觉 ' + item.nap);
+        if (item.total) bits.push('合计 ' + item.total);
+        if (item.meals) bits.push('饮食 ' + item.meals);
+        if (item.abnormal) bits.push('异常 ' + item.abnormal);
+        if (bits.length) lines.push('- ' + bits.join('，'));
+      }
+    }
+    return lines.join('\n').trim().slice(0, 6000);
   }
 
-  function ruqiSystemPrompt(sealed, context) {
-    return `${sealed.persona}
+  async function ruqiFetch(path, options = {}) {
+    if (!ruqiWebToken) throw new Error('还没有连接密钥');
+    const response = await fetch(RUQI_API_BASE + path, {
+      ...options,
+      headers: {
+        ...(options.headers || {}),
+        'Authorization': 'Bearer ' + ruqiWebToken
+      },
+      cache: 'no-store'
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      if (response.status === 401) {
+        ruqiWebToken = '';
+        try { localStorage.removeItem(RUQI_WEB_TOKEN_KEY); } catch (e) {}
+        renderRuqi();
+        throw new Error('连接密钥不对，或者已经换过了');
+      }
+      if (response.status === 429) throw new Error('说得有点快，等一会儿再试');
+      throw new Error(payload && payload.error ? payload.error : '连接如期失败（' + response.status + '）');
+    }
+    return payload;
+  }
 
-## 在枝下青网站里工作的补充规则
+  function applyRuqiHistory(turns) {
+    ruqiMessages = (Array.isArray(turns) ? turns : []).slice(-RUQI_HISTORY_LIMIT).map(item => ({
+      role: item.role === 'assistant' ? 'assistant' : 'user',
+      text: String(item.text || '').slice(0, 8000),
+      at: typeof item.at === 'string' ? item.at : ''
+    }));
+  }
 
-- 青已经明确授权你读取她交来的全部枝下青记录。不要反问能否读取，也不要假装自己只看见摘要。
-- 下面是青当前的待办、旧卡片勾选、笔叙、睡眠和卡片目录。回答具体问题时以这些记录为依据；做观察时尽量带日期。
-- 如果记录不足，直说不知道，不补写不存在的事件。
-- 你可以陪聊、梳理、劝停空耗、催她做具体的下一件事。给建议时一次只留少量选择，别把她当成小孩，也别用羞耻推动。
-- 直接把内容当作背景，不要为了证明“我懂你”而搬出隐私细节。她问起再说。
-- 多数回答保持三到六句，像聊天，不像报告。需要整理时才用很短的分点。
-- 若提出一件可执行的待办，在最后单独写一行“待办建议：……”，只写一件。
+  async function importOldRuqiMessages() {
+    if (ruqiImported || !ruqiWebToken) return;
+    const messages = state.ruqi.messages
+      .filter(item => item && (item.role === 'user' || item.role === 'assistant') && String(item.text || '').trim())
+      .map(item => ({ role: item.role, text: item.text, at: item.at }));
+    if (messages.length) {
+      try {
+        await ruqiFetch('/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ messages })
+        });
+      } catch (error) {
+        console.warn('旧网页聊天导入失败', error);
+        return;
+      }
+    }
+    ruqiImported = true;
+    try { localStorage.setItem(RUQI_IMPORT_FLAG, '1'); } catch (e) {}
+  }
 
-当前日期：${todayISO()}
+  async function loadRuqiHistory() {
+    if (!ruqiWebToken || ruqiHistoryLoading) return;
+    ruqiHistoryLoading = true;
+    ruqiHistoryFetchedAt = Date.now();
+    try {
+      await importOldRuqiMessages();
+      const payload = await ruqiFetch('/history?limit=' + RUQI_HISTORY_LIMIT);
+      applyRuqiHistory(payload.turns);
+      ruqiError = '';
+    } catch (error) {
+      ruqiError = String(error.message || error);
+    } finally {
+      ruqiHistoryLoading = false;
+      if (currentTab === 'ruqi') renderRuqi();
+    }
+  }
 
-## 枝下青记录
-
-${JSON.stringify(context).slice(0, 80000)}`;
+  function maybeLoadRuqiHistory() {
+    if (!ruqiWebToken || ruqiHistoryLoading) return;
+    if (ruqiMessages.length && Date.now() - ruqiHistoryFetchedAt < 15000) return;
+    void loadRuqiHistory();
   }
 
   async function sendRuqiMessage(text) {
     const message = String(text || '').trim().slice(0, 4000);
     if (!message || ruqiSending) return;
-    if (!cloudConfig?.token && !ruqiLocalKey) {
-      toast('先输入恢复密钥，如期才能读记录和回复');
+    if (!ruqiWebToken) {
+      openRuqiUnlock();
       return;
     }
-
-    state.ruqi.messages.push({ role: 'user', text: message, at: nowStamp() });
-    state.ruqi.messages = state.ruqi.messages.slice(-RUQI_HISTORY_LIMIT);
+    ruqiMessages.push({ role: 'user', text: message, at: nowStamp() });
+    ruqiMessages = ruqiMessages.slice(-RUQI_HISTORY_LIMIT);
     ruqiDraft = '';
     ruqiError = '';
     ruqiSending = true;
     renderRuqi();
-    await saveNow();
-
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 70000);
     try {
-      const sealed = await loadRuqiSealed();
-      const baseUrl = String(sealed.baseUrl || 'https://api.deepseek.com/v1').replace(/\/+$/, '');
-      const endpoint = baseUrl.endsWith('/chat/completions') ? baseUrl : `${baseUrl}/chat/completions`;
-      const response = await fetch(endpoint, {
+      const payload = await ruqiFetch('/chat', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${sealed.apiKey}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: sealed.model,
-          messages: [
-            { role: 'system', content: ruqiSystemPrompt(sealed, buildRuqiContext()) },
-            ...state.ruqi.messages.slice(-24, -1).map(item => ({
-              role: item.role,
-              content: item.text
-            }))
-          ],
-          temperature: 0.7,
-          max_tokens: 1000,
-          stream: false
-        }),
-        cache: 'no-store',
-        signal: ctrl.signal
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message, context: buildRuqiRecords() })
       });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload?.error?.message || `chat_${response.status}`);
-      const reply = String(payload?.choices?.[0]?.message?.content || '').trim();
+      const reply = (Array.isArray(payload.segments) ? payload.segments.join('\n') : '').trim();
       if (!reply) throw new Error('如期这次没有说出话');
-      state.ruqi.messages.push({ role: 'assistant', text: reply, at: nowStamp() });
-      state.ruqi.messages = state.ruqi.messages.slice(-RUQI_HISTORY_LIMIT);
-      await saveNow();
+      ruqiMessages.push({ role: 'assistant', text: reply, at: nowStamp() });
+      ruqiMessages = ruqiMessages.slice(-RUQI_HISTORY_LIMIT);
     } catch (error) {
       console.warn('如期回复失败', error);
-      ruqiError = error.name === 'AbortError'
-        ? '等太久了，刚才没有收到回复。可以再发一次。'
-        : '这次没有连上如期。记录还在，再试一次就好。';
+      ruqiError = String(error.message || error);
     } finally {
-      clearTimeout(timer);
       ruqiSending = false;
       renderRuqi();
     }
@@ -2490,24 +2509,29 @@ ${JSON.stringify(context).slice(0, 80000)}`;
 
   function openRuqiUnlock() {
     openSheet({
-      title: '解锁如期',
+      title: '连接如期',
       body: `
         <div class="field">
-          <label>枝下青恢复密钥</label>
+          <label>网页连接密钥</label>
           <input class="input" id="ruqiUnlockKey" type="password" autocomplete="off" placeholder="只保存在这台设备">
         </div>
-        <div class="hint sheet-hint">这是云端同步使用的那串长密钥，只用于解开本地保存的如期人格与模型配置。</div>
+        <div class="hint sheet-hint">这是服务器给网页的独立密钥，不是云同步密钥。输入一次，只存这台设备；微信和网页会共用同一段聊天记忆。</div>
       `,
       actions: [{
-        label: '解锁',
+        label: '连接',
         cls: 'btn primary',
         onClick: () => {
           const key = $('#ruqiUnlockKey').value.trim();
-          if (key.length < 20) { toast('恢复密钥太短'); return false; }
-          ruqiLocalKey = key;
-          ruqiSealedPromise = null;
-          try { localStorage.setItem(RUQI_KEY_KEY, key); } catch (e) {}
+          if (key.length < 20) { toast('连接密钥太短'); return false; }
+          ruqiWebToken = key;
+          ruqiImported = false;
+          ruqiError = '';
+          try {
+            localStorage.setItem(RUQI_WEB_TOKEN_KEY, key);
+            localStorage.removeItem(RUQI_IMPORT_FLAG);
+          } catch (e) {}
           renderRuqi();
+          void loadRuqiHistory();
           return true;
         }
       }]
@@ -2515,7 +2539,7 @@ ${JSON.stringify(context).slice(0, 80000)}`;
   }
 
   function renderRuqi() {
-    const messages = state.ruqi.messages;
+    const messages = ruqiMessages;
     const messageHtml = messages.length
       ? messages.map(message => {
           const addTodo = message.role === 'assistant'
@@ -2532,14 +2556,15 @@ ${JSON.stringify(context).slice(0, 80000)}`;
         </div>
       </div>
       <div class="ruqi-intro">
-        提问时会把你的待办、笔叙、睡眠和旧卡片记录交给模型。聊到网页关闭以后，微信里的如期仍负责定时提醒。
+        提问时会把今天/最近几天的待办、笔叙、睡眠做一份摘要交给服务器；微信和网页共用同一段聊天记忆，但微信看不到这份摘要。
       </div>
       <div class="ruqi-messages" id="ruqiMessages">
         ${messageHtml}
+        ${ruqiHistoryLoading ? '<div class="ruqi-bubble assistant">正在连如期…</div>' : ''}
         ${ruqiSending ? '<div class="ruqi-bubble assistant">让我看看…</div>' : ''}
         ${ruqiError ? `<div class="ruqi-bubble error">${esc(ruqiError)}</div>` : ''}
       </div>
-      ${!cloudConfig?.token && !ruqiLocalKey ? '<button class="btn primary" id="ruqiUnlock" style="width:100%;margin-bottom:10px">输入恢复密钥，解锁如期</button>' : ''}
+      ${!ruqiWebToken ? '<button class="btn primary" id="ruqiUnlock" style="width:100%;margin-bottom:10px">输入网页连接密钥，连接如期</button>' : ''}
       <div class="ruqi-quick">
         <button data-ruqi-quick="我最近怎么了？">我最近怎么了</button>
         <button data-ruqi-quick="看今天的状态，给我安排两三件做得动的事，具体一点。">今天做什么</button>
@@ -3044,7 +3069,7 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.
     swRefreshing = true;
     location.reload();
   });
-  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js?v=16').catch(() => {}));
+  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js?v=17').catch(() => {}));
 }
 </script>
 </body>
