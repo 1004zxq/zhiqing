@@ -2516,11 +2516,12 @@ ${JSON.stringify(context).slice(0, 80000)}`;
   function renderRuqi() {
     const messages = state.ruqi.messages;
     const messageHtml = messages.length
-      ? messages.map(message => `
-          <div class="ruqi-bubble ${message.role === 'user' ? 'user' : 'assistant'}">
-            ${esc(message.text)}
-            ${message.role === 'assistant' ? `<button class="ruqi-add-todo" data-bot-add-todo="${esc(message.text)}">加入今天待办</button>` : ''}
-          </div>`).join('')
+      ? messages.map(message => {
+          const addTodo = message.role === 'assistant'
+            ? `<button class="ruqi-add-todo" data-bot-add-todo="${esc(message.text)}">加入今天待办</button>`
+            : '';
+          return `<div class="ruqi-bubble ${message.role === 'user' ? 'user' : 'assistant'}">${esc(message.text)}${addTodo}</div>`;
+        }).join('')
       : `<div class="ruqi-bubble assistant">我在。今天想先说哪一句？也可以让我看看最近，再替我挑一件今天做得动的事 ˃ᴗ˂</div>`;
     $('#view-ruqi').innerHTML = `
       <div class="page-head ruqi-head">
@@ -3042,7 +3043,7 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.
     swRefreshing = true;
     location.reload();
   });
-  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js?v=13').catch(() => {}));
+  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js?v=14').catch(() => {}));
 }
 </script>
 </body>
