@@ -1,4 +1,4 @@
-const CACHE = 'zhiqing-static-v9';
+const CACHE = 'zhiqing-static-v10';
 const ASSETS = ['./', './index.html', './ruqi-sealed.json', './manifest.webmanifest', './icon-180.png', './icon-192.png', './icon-512.png', './icon.svg'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
