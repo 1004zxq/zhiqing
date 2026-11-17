@@ -801,7 +801,30 @@
     font-size: 14px;
   }
   .build-item.single { grid-column: 1 / -1; }
-  .build-item input { width: 18px; height: 18px; margin: 0; flex: 0 0 auto; accent-color: var(--accent); }
+  .build-item input {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    flex: 0 0 auto;
+    position: relative;
+    border: 1.5px solid var(--line-strong);
+    border-radius: 5px;
+    background: var(--paper);
+  }
+  .build-item input:checked { border-color: var(--accent); background: var(--accent); }
+  .build-item input:checked::after {
+    content: '';
+    position: absolute;
+    left: 5px;
+    top: 2px;
+    width: 4px;
+    height: 8px;
+    border: solid var(--on-accent);
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+  }
   .build-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   /* ---------- sheet ---------- */
@@ -3204,7 +3227,7 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.
     swRefreshing = true;
     location.reload();
   });
-  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js?v=18').catch(() => {}));
+  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js?v=19').catch(() => {}));
 }
 </script>
 </body>
