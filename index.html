@@ -26,6 +26,9 @@
     --accent: #2f5d57;
     --accent-2: #3f756d;
     --accent-soft: #e2ece8;
+    --life: #6f9f8a;
+    --life-soft: #eef5f0;
+    --life-line: #c3d9cc;
     --on-accent: #fbf9f4;
     --danger: #9a4f45;
     --wash: rgba(47, 93, 87, .07);
@@ -46,6 +49,9 @@
     --accent: #8fbdb3;
     --accent-2: #a6ccc3;
     --accent-soft: #22312d;
+    --life: #b7d8c8;
+    --life-soft: #1f2d26;
+    --life-line: #3a5246;
     --on-accent: #10201c;
     --danger: #d18b7f;
     --wash: rgba(143, 189, 179, .06);
@@ -760,7 +766,7 @@
   .tab.active { color: var(--accent); }
   .tab:active { background: var(--accent-soft); }
 
-  /* ---------- build card fab ---------- */
+  /* ---------- quick cards fab ---------- */
   .build-fab {
     position: fixed;
     right: 16px;
@@ -784,9 +790,13 @@
   .build-fab:active { transform: scale(.97); }
   .build-fab.hidden { opacity: 0; pointer-events: none; transform: translateY(8px); }
   .build-fab svg { width: 18px; height: 18px; }
-  .build-group { margin: 2px 0 15px; }
+  .quick-tools { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin: 0 2px 12px; }
+  .quick-tools .hint { margin: 0; }
+  .build-group { margin: 2px 0 16px; }
   .build-group:last-child { margin-bottom: 4px; }
   .build-group-title { margin: 0 2px 8px; color: var(--muted); font-size: 11.5px; letter-spacing: .08em; }
+  .build-group.build .build-group-title { color: var(--accent); }
+  .build-group.life .build-group-title { color: var(--life); }
   .build-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .build-item {
     display: flex;
@@ -800,6 +810,9 @@
     color: var(--ink);
     font-size: 14px;
   }
+  .build-item.life { background: var(--life-soft); border-color: var(--life-line); }
+  .build-item.checked { border-color: var(--accent); background: var(--accent-soft); }
+  .build-item.life.checked { border-color: var(--life); background: var(--life-soft); }
   .build-item.single { grid-column: 1 / -1; }
   .build-item input {
     -webkit-appearance: none;
@@ -810,19 +823,20 @@
     flex: 0 0 auto;
     position: relative;
     border: 1.5px solid var(--line-strong);
-    border-radius: 5px;
+    border-radius: 50%;
     background: var(--paper);
   }
   .build-item input:checked { border-color: var(--accent); background: var(--accent); }
+  .build-item.life input:checked { border-color: var(--life); background: var(--life); }
   .build-item input:checked::after {
     content: '';
     position: absolute;
-    left: 5px;
-    top: 2px;
+    left: 5.5px;
+    top: 3.5px;
     width: 4px;
     height: 8px;
     border: solid var(--on-accent);
-    border-width: 0 2px 2px 0;
+    border-width: 0 1.8px 1.8px 0;
     transform: rotate(45deg);
   }
   .build-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1011,9 +1025,9 @@
     </button>
   </nav>
 
-  <button class="build-fab" id="buildFab" type="button" aria-label="建设卡：添加到今天待办">
+  <button class="build-fab" id="buildFab" type="button" aria-label="做点什么：快捷加待办">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h9M4 12h9M4 18h9"/><path d="M17 15l2 2 4-4"/></svg>
-    <span>建设卡</span>
+    <span>做点什么</span>
   </button>
 
   <div id="sheetRoot" inert></div>
@@ -1043,15 +1057,52 @@
     { key: 'daily', label: '日常', hint: '今天发生了什么', unit: '篇', placeholder: '今天发生了什么。', empty: '今天发生了什么，写一句也算。' },
     { key: 'quote', label: '摘录', hint: '碰到的喜欢的句子', unit: '条', placeholder: '碰到的喜欢的句子。可以顺手写下来源。', empty: '碰到喜欢的句子，就记下来。' }
   ];
-  const BUILD_ITEMS = [
-    { group: '六级', label: '词库', todo: '六级·词库' },
-    { group: '六级', label: '翻译', todo: '六级·翻译' },
-    { group: '六级', label: '作文', todo: '六级·作文' },
-    { group: '六级', label: '听力', todo: '六级·听力' },
-    { group: '六级', label: '阅读', todo: '六级·阅读' },
-    { group: '教资', label: '教资', todo: '教资' },
-    { group: '计算机二级', label: '计算机二级', todo: '计算机二级' }
+  const QUICK_CARD_DEFAULTS = [
+    {
+      id: 'build',
+      title: '建设卡',
+      tone: 'build',
+      items: ['六级·词库', '六级·翻译', '六级·作文', '六级·听力', '六级·阅读', '教资', '计算机二级']
+    },
+    {
+      id: 'life',
+      title: '滋养卡',
+      tone: 'life',
+      items: ['字帖', '听歌', '书', '电影']
+    }
   ];
+
+  function normalizeQuickCards(value) {
+    const incoming = Array.isArray(value) ? value : [];
+    return QUICK_CARD_DEFAULTS.map(def => {
+      const found = incoming.find(group => group && group.id === def.id) || {};
+      const rawItems = Array.isArray(found.items) ? found.items : def.items;
+      const items = [];
+      for (const item of rawItems) {
+        const text = String(item || '').trim().slice(0, 80);
+        if (!text || items.includes(text)) continue;
+        items.push(text);
+        if (items.length >= 30) break;
+      }
+      return {
+        id: def.id,
+        tone: def.tone,
+        title: String(found.title || def.title).trim().slice(0, 12) || def.title,
+        items: items.length ? items : def.items.slice()
+      };
+    });
+  }
+
+  function parseQuickItems(value) {
+    const out = [];
+    for (const line of String(value || '').split(/\n+/)) {
+      const text = line.trim().replace(/^[-*·]\s*/, '').slice(0, 80);
+      if (!text || out.includes(text)) continue;
+      out.push(text);
+      if (out.length >= 30) break;
+    }
+    return out;
+  }
   const emptyNotes = () => ({ output: '', daily: '', quote: '' });
   const noteText = (day, type) => (day && day.notes && typeof day.notes[type] === 'string') ? day.notes[type] : '';
   const hasAnyNote = day => !!(day && day.notes && Object.values(day.notes).some(v => (v || '').trim()));
@@ -1113,6 +1164,7 @@
       cards,
       days: s.days && typeof s.days === 'object' && !Array.isArray(s.days) ? s.days : {},
       sleep: Array.isArray(s.sleep) ? s.sleep : clone(base.sleep),
+      quickCards: normalizeQuickCards(s.quickCards),
       ruqi: {
         messages: s.ruqi && Array.isArray(s.ruqi.messages)
           ? s.ruqi.messages
@@ -1383,6 +1435,7 @@
 
   const hadStore = (() => { try { return !!localStorage.getItem(STORE); } catch (e) { return false; } })();
   let state = loadState();
+  state.quickCards = normalizeQuickCards(state.quickCards);
   if (!state.ruqi || !Array.isArray(state.ruqi.messages)) state.ruqi = { messages: [] };
   let currentTab = 'today';
   let viewDate = todayISO();
@@ -2211,28 +2264,37 @@
   }
 
   function openBuildSheet() {
-    const groups = new Map();
-    for (const item of BUILD_ITEMS) {
-      if (!groups.has(item.group)) groups.set(item.group, []);
-      groups.get(item.group).push(item);
-    }
+    const groups = state.quickCards;
     const body = `
-      <div class="hint sheet-hint" style="margin:0 2px 12px">勾选要加进今天待办的，可以多选。</div>
-      ${[...groups.entries()].map(([title, items]) => `
-        <div class="build-group">
-          <div class="build-group-title">${esc(title)}</div>
+      <div class="quick-tools">
+        <span class="hint sheet-hint">勾选要加进今天待办的，可以多选。</span>
+        <button class="link-btn" id="editQuickCards" type="button">编辑内容</button>
+      </div>
+      ${groups.map(group => `
+        <div class="build-group ${group.tone}">
+          <div class="build-group-title">${esc(group.title)}</div>
           <div class="build-grid">
-            ${items.map(item => `
-              <label class="build-item${items.length === 1 ? ' single' : ''}">
-                <input type="checkbox" value="${esc(item.todo)}">
-                <span>${esc(item.label)}</span>
+            ${group.items.map(text => `
+              <label class="build-item ${group.tone}${((group.tone === 'build' && /^(教资|计算机)/.test(text)) || group.items.length === 1) ? ' single' : ''}">
+                <input type="checkbox" value="${esc(text)}">
+                <span>${esc(text)}</span>
               </label>`).join('')}
           </div>
         </div>`).join('')}
     `;
     openSheet({
-      title: '建设卡',
+      title: '做点什么',
       body,
+      onMount: root => {
+        const edit = root.querySelector('#editQuickCards');
+        if (edit) edit.addEventListener('click', openQuickCardsEditor);
+        root.onchange = event => {
+          const input = event.target;
+          if (!input.matches || !input.matches('.build-item input')) return;
+          const item = input.closest('.build-item');
+          if (item) item.classList.toggle('checked', input.checked);
+        };
+      },
       actions: [
         {
           label: '加入今天待办',
@@ -2252,6 +2314,58 @@
             viewDate = todayISO();
             if (currentTab === 'today') renderToday();
             else switchTab('today');
+            return true;
+          }
+        },
+        { label: '取消' }
+      ]
+    });
+  }
+
+  function openQuickCardsEditor() {
+    const build = state.quickCards.find(group => group.id === 'build');
+    const life = state.quickCards.find(group => group.id === 'life');
+    openSheet({
+      title: '编辑卡片',
+      body: `
+        <div class="field">
+          <label>第一组名字</label>
+          <input class="input" id="quickBuildTitle" maxlength="12" value="${esc(build.title)}">
+        </div>
+        <div class="field">
+          <label>第一组内容（一行一个）</label>
+          <textarea class="input" id="quickBuildItems" rows="7">${esc(build.items.join('\n'))}</textarea>
+        </div>
+        <div class="field">
+          <label>第二组名字</label>
+          <input class="input" id="quickLifeTitle" maxlength="12" value="${esc(life.title)}">
+        </div>
+        <div class="field">
+          <label>第二组内容（一行一个）</label>
+          <textarea class="input" id="quickLifeItems" rows="5">${esc(life.items.join('\n'))}</textarea>
+        </div>
+        <div class="hint sheet-hint">一行一个；空行会忽略。保存后回到勾选面板。</div>
+      `,
+      actions: [
+        {
+          label: '保存',
+          cls: 'btn primary',
+          onClick: () => {
+            const buildItems = parseQuickItems($('#quickBuildItems').value);
+            const lifeItems = parseQuickItems($('#quickLifeItems').value);
+            if (!buildItems.length || !lifeItems.length) {
+              toast('两组都至少留一项');
+              return false;
+            }
+            const buildTitle = $('#quickBuildTitle').value.trim().slice(0, 12) || '建设卡';
+            const lifeTitle = $('#quickLifeTitle').value.trim().slice(0, 12) || '滋养卡';
+            state.quickCards = [
+              { id: 'build', tone: 'build', title: buildTitle, items: buildItems },
+              { id: 'life', tone: 'life', title: lifeTitle, items: lifeItems }
+            ];
+            saveNow();
+            toast('卡片内容已保存');
+            setTimeout(() => { openBuildSheet(); }, 80);
             return true;
           }
         },
@@ -3155,7 +3269,7 @@
             <b>如期</b> 读记录、陪聊、帮你挑下一件事；<br>
             <b>设置</b> 云同步、外观和数据。</p>
           <p>正文边写边存，改动会自动保存在这台手机的浏览器里。点日期可以直接选过去的一天。</p>
-          <p class="welcome-soft">右下角的「建设卡」可以展开勾选，直接加进今天待办。</p>
+          <p class="welcome-soft">右下角的「做点什么」可以展开勾选，直接加进今天待办，内容也能自己编辑。</p>
           <p class="welcome-soft">旧卡片和旧勾选仍在对应日期里，只读保留，不会丢。</p>
           <p class="welcome-soft">想让手机和电脑共用一份数据，可在「设置 → 云同步」连接私人加密同步。</p>
         </div>
@@ -3227,7 +3341,7 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.
     swRefreshing = true;
     location.reload();
   });
-  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js?v=19').catch(() => {}));
+  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js?v=20').catch(() => {}));
 }
 </script>
 </body>
