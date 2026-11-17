@@ -416,6 +416,7 @@
   .todo-row.done .check { background: var(--accent); border-color: var(--accent); }
   .todo-row.done .check svg { opacity: 1; transform: none; }
   .todo-row.done .todo-title { color: var(--muted); text-decoration: line-through; }
+  .todo-row.quick-build.done .todo-title { color: var(--life); }
   .todo-main { flex: 1; min-width: 0; }
   .todo-title {
     display: block;
@@ -795,8 +796,6 @@
   .build-group { margin: 2px 0 16px; }
   .build-group:last-child { margin-bottom: 4px; }
   .build-group-title { margin: 0 2px 8px; color: var(--muted); font-size: 11.5px; letter-spacing: .08em; }
-  .build-group.build .build-group-title { color: var(--accent); }
-  .build-group.life .build-group-title { color: var(--life); }
   .build-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .build-item {
     display: flex;
@@ -810,9 +809,7 @@
     color: var(--ink);
     font-size: 14px;
   }
-  .build-item.life { background: var(--life-soft); border-color: var(--life-line); }
   .build-item.checked { border-color: var(--accent); background: var(--accent-soft); }
-  .build-item.life.checked { border-color: var(--life); background: var(--life-soft); }
   .build-item.single { grid-column: 1 / -1; }
   .build-item input {
     -webkit-appearance: none;
@@ -827,7 +824,6 @@
     background: var(--paper);
   }
   .build-item input:checked { border-color: var(--accent); background: var(--accent); }
-  .build-item.life input:checked { border-color: var(--life); background: var(--life); }
   .build-item input:checked::after {
     content: '';
     position: absolute;
@@ -1188,7 +1184,8 @@
         note: String(todo && todo.note || '').slice(0, 3000),
         done: !!(todo && todo.done),
         createdAt: String(todo && todo.createdAt || ''),
-        completedAt: String(todo && todo.completedAt || '')
+        completedAt: String(todo && todo.completedAt || ''),
+        quickCard: todo && (todo.quickCard === 'build' || todo.quickCard === 'life') ? todo.quickCard : ''
       })).filter(todo => todo.text);
       const notes = day.notes && typeof day.notes === 'object' && !Array.isArray(day.notes) ? day.notes : {};
       day.notes = {
@@ -2156,7 +2153,7 @@
       ${todos.length ? `
         <div class="todo-list">
           ${todos.map(todo => `
-            <div class="todo-row ${todo.done ? 'done' : ''}">
+            <div class="todo-row ${todo.done ? 'done' : ''}${isBuildTodo(todo) ? ' quick-build' : ''}">
               <button class="check" data-todo-toggle="${esc(todo.id)}" aria-label="${todo.done ? '取消完成' : '完成'}${esc(todo.text)}" aria-pressed="${todo.done}">${ICON.check}</button>
               <div class="todo-main">
                 <button class="todo-title" data-todo-edit="${esc(todo.id)}">${esc(todo.text)}</button>
@@ -2235,18 +2232,20 @@
       note: '',
       done: false,
       createdAt: nowStamp(),
-      completedAt: ''
+      completedAt: '',
+      quickCard: ''
     });
     saveNow();
     return day.todos[day.todos.length - 1];
   }
 
-  function addBuildTodos(values) {
+  function addBuildTodos(items) {
     const day = getDay(todayISO(), true);
     const existing = new Set((day.todos || []).map(todo => String(todo.text || '')));
     let added = 0;
-    for (const raw of values) {
-      const text = String(raw || '').trim().slice(0, 500);
+    for (const item of items) {
+      const text = String(item && item.text !== undefined ? item.text : item || '').trim().slice(0, 500);
+      const tone = item && (item.tone === 'build' || item.tone === 'life') ? item.tone : '';
       if (!text || existing.has(text)) continue;
       day.todos.push({
         id: newId('todo'),
@@ -2254,13 +2253,22 @@
         note: '',
         done: false,
         createdAt: nowStamp(),
-        completedAt: ''
+        completedAt: '',
+        quickCard: tone
       });
       existing.add(text);
       added += 1;
     }
     if (added) saveNow();
     return added;
+  }
+
+  function isBuildTodo(todo) {
+    if (!todo) return false;
+    if (todo.quickCard === 'build') return true;
+    if (todo.quickCard === 'life') return false;
+    const build = (state.quickCards || []).find(group => group.id === 'build');
+    return !!(build && build.items.includes(String(todo.text || '')));
   }
 
   function openBuildSheet() {
@@ -2276,7 +2284,7 @@
           <div class="build-grid">
             ${group.items.map(text => `
               <label class="build-item ${group.tone}${((group.tone === 'build' && /^(教资|计算机)/.test(text)) || group.items.length === 1) ? ' single' : ''}">
-                <input type="checkbox" value="${esc(text)}">
+                <input type="checkbox" value="${esc(text)}" data-tone="${group.tone}">
                 <span>${esc(text)}</span>
               </label>`).join('')}
           </div>
@@ -2300,7 +2308,7 @@
           label: '加入今天待办',
           cls: 'btn primary',
           onClick: () => {
-            const checked = $$('#sheetRoot .build-item input:checked').map(input => input.value);
+            const checked = $$('#sheetRoot .build-item input:checked').map(input => ({ text: input.value, tone: input.dataset.tone || '' }));
             if (!checked.length) {
               toast('先勾选要加的');
               return false;
@@ -3341,7 +3349,7 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.
     swRefreshing = true;
     location.reload();
   });
-  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js?v=20').catch(() => {}));
+  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js?v=21').catch(() => {}));
 }
 </script>
 </body>
