@@ -156,7 +156,7 @@
   /* ---------- layout ---------- */
   .main {
     flex: 1;
-    padding: 6px 16px calc(92px + env(safe-area-inset-bottom));
+    padding: 6px 16px calc(136px + env(safe-area-inset-bottom));
   }
   .view { display: none; }
   .view.active { display: block; animation: rise .24s ease; }
@@ -760,6 +760,50 @@
   .tab.active { color: var(--accent); }
   .tab:active { background: var(--accent-soft); }
 
+  /* ---------- build card fab ---------- */
+  .build-fab {
+    position: fixed;
+    right: 16px;
+    bottom: calc(74px + env(safe-area-inset-bottom));
+    z-index: 40;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 42px;
+    padding: 0 14px;
+    border: 1px solid var(--accent);
+    border-radius: 999px;
+    background: var(--accent);
+    color: var(--on-accent);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: .04em;
+    box-shadow: var(--shadow);
+    transition: opacity .18s, transform .18s;
+  }
+  .build-fab:active { transform: scale(.97); }
+  .build-fab.hidden { opacity: 0; pointer-events: none; transform: translateY(8px); }
+  .build-fab svg { width: 18px; height: 18px; }
+  .build-group { margin: 2px 0 15px; }
+  .build-group:last-child { margin-bottom: 4px; }
+  .build-group-title { margin: 0 2px 8px; color: var(--muted); font-size: 11.5px; letter-spacing: .08em; }
+  .build-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .build-item {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    min-height: 44px;
+    padding: 9px 12px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--paper-2);
+    color: var(--ink);
+    font-size: 14px;
+  }
+  .build-item.single { grid-column: 1 / -1; }
+  .build-item input { width: 18px; height: 18px; margin: 0; flex: 0 0 auto; accent-color: var(--accent); }
+  .build-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
   /* ---------- sheet ---------- */
   #sheetRoot { position: fixed; inset: 0; z-index: 100; pointer-events: none; visibility: hidden; transition: visibility .28s; }
   #sheetRoot.open { pointer-events: auto; visibility: visible; }
@@ -869,6 +913,7 @@
   .toast.show { opacity: 1; transform: translate(-50%, 0); }
 
   @media (min-width: 700px) {
+    .build-fab { right: calc(50% - 320px + 16px); }
     .sheet {
       top: 50%;
       bottom: auto;
@@ -943,6 +988,11 @@
     </button>
   </nav>
 
+  <button class="build-fab" id="buildFab" type="button" aria-label="建设卡：添加到今天待办">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h9M4 12h9M4 18h9"/><path d="M17 15l2 2 4-4"/></svg>
+    <span>建设卡</span>
+  </button>
+
   <div id="sheetRoot" inert></div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
@@ -969,6 +1019,15 @@
     { key: 'output', label: '输出', hint: '主动写的文字', unit: '篇', placeholder: '主动写的文字。想法、一段话、一首歌…', empty: '主动写的文字，写一段就存下来。' },
     { key: 'daily', label: '日常', hint: '今天发生了什么', unit: '篇', placeholder: '今天发生了什么。', empty: '今天发生了什么，写一句也算。' },
     { key: 'quote', label: '摘录', hint: '碰到的喜欢的句子', unit: '条', placeholder: '碰到的喜欢的句子。可以顺手写下来源。', empty: '碰到喜欢的句子，就记下来。' }
+  ];
+  const BUILD_ITEMS = [
+    { group: '六级', label: '词库', todo: '六级·词库' },
+    { group: '六级', label: '翻译', todo: '六级·翻译' },
+    { group: '六级', label: '作文', todo: '六级·作文' },
+    { group: '六级', label: '听力', todo: '六级·听力' },
+    { group: '六级', label: '阅读', todo: '六级·阅读' },
+    { group: '教资', label: '教资', todo: '教资' },
+    { group: '计算机二级', label: '计算机二级', todo: '计算机二级' }
   ];
   const emptyNotes = () => ({ output: '', daily: '', quote: '' });
   const noteText = (day, type) => (day && day.notes && typeof day.notes[type] === 'string') ? day.notes[type] : '';
@@ -1943,6 +2002,8 @@
     $$('.view').forEach(v => v.classList.toggle('active', v.dataset.view === tab));
     $$('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
     renderCurrent();
+    const buildFab = $('#buildFab');
+    if (buildFab) buildFab.classList.toggle('hidden', tab === 'ruqi');
     if (tab === 'ruqi') maybeLoadRuqiHistory();
     window.scrollTo({ top: 0, behavior: 'auto' });
   }
@@ -2102,6 +2163,78 @@
     });
     saveNow();
     return day.todos[day.todos.length - 1];
+  }
+
+  function addBuildTodos(values) {
+    const day = getDay(todayISO(), true);
+    const existing = new Set((day.todos || []).map(todo => String(todo.text || '')));
+    let added = 0;
+    for (const raw of values) {
+      const text = String(raw || '').trim().slice(0, 500);
+      if (!text || existing.has(text)) continue;
+      day.todos.push({
+        id: newId('todo'),
+        text,
+        note: '',
+        done: false,
+        createdAt: nowStamp(),
+        completedAt: ''
+      });
+      existing.add(text);
+      added += 1;
+    }
+    if (added) saveNow();
+    return added;
+  }
+
+  function openBuildSheet() {
+    const groups = new Map();
+    for (const item of BUILD_ITEMS) {
+      if (!groups.has(item.group)) groups.set(item.group, []);
+      groups.get(item.group).push(item);
+    }
+    const body = `
+      <div class="hint sheet-hint" style="margin:0 2px 12px">勾选要加进今天待办的，可以多选。</div>
+      ${[...groups.entries()].map(([title, items]) => `
+        <div class="build-group">
+          <div class="build-group-title">${esc(title)}</div>
+          <div class="build-grid">
+            ${items.map(item => `
+              <label class="build-item${items.length === 1 ? ' single' : ''}">
+                <input type="checkbox" value="${esc(item.todo)}">
+                <span>${esc(item.label)}</span>
+              </label>`).join('')}
+          </div>
+        </div>`).join('')}
+    `;
+    openSheet({
+      title: '建设卡',
+      body,
+      actions: [
+        {
+          label: '加入今天待办',
+          cls: 'btn primary',
+          onClick: () => {
+            const checked = $$('#sheetRoot .build-item input:checked').map(input => input.value);
+            if (!checked.length) {
+              toast('先勾选要加的');
+              return false;
+            }
+            const added = addBuildTodos(checked);
+            if (!added) {
+              toast('今天已经有了，没重复加');
+              return true;
+            }
+            toast('已加入今天待办 ' + added + ' 条');
+            viewDate = todayISO();
+            if (currentTab === 'today') renderToday();
+            else switchTab('today');
+            return true;
+          }
+        },
+        { label: '取消' }
+      ]
+    });
   }
 
   function toggleTodo(id) {
@@ -2999,6 +3132,7 @@
             <b>如期</b> 读记录、陪聊、帮你挑下一件事；<br>
             <b>设置</b> 云同步、外观和数据。</p>
           <p>正文边写边存，改动会自动保存在这台手机的浏览器里。点日期可以直接选过去的一天。</p>
+          <p class="welcome-soft">右下角的「建设卡」可以展开勾选，直接加进今天待办。</p>
           <p class="welcome-soft">旧卡片和旧勾选仍在对应日期里，只读保留，不会丢。</p>
           <p class="welcome-soft">想让手机和电脑共用一份数据，可在「设置 → 云同步」连接私人加密同步。</p>
         </div>
@@ -3016,6 +3150,7 @@
     $$('.tab').forEach(btn => {
       btn.addEventListener('click', () => switchTab(btn.dataset.tab));
     });
+    $('#buildFab').addEventListener('click', openBuildSheet);
     $('#themeBtn').addEventListener('click', () => {
       const current = resolveTheme();
       state.settings.theme = current === 'dark' ? 'light' : 'dark';
@@ -3069,7 +3204,7 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.
     swRefreshing = true;
     location.reload();
   });
-  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js?v=17').catch(() => {}));
+  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js?v=18').catch(() => {}));
 }
 </script>
 </body>
