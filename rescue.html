@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>枝下青 · 本机数据检查</title>
+<style>
+  :root { --paper:#f5f2ec; --ink:#23261f; --muted:#777b72; --line:#ded8ca; --card:#fbf9f4; --accent:#2f5d57; --danger:#9a4f45; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:18px 16px 40px; background:var(--paper); color:var(--ink); font:15px/1.65 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif; }
+  h1 { font-size:22px; margin:0 0 6px; }
+  h2 { font-size:15px; margin:0 0 8px; }
+  p { margin:6px 0; }
+  .muted { color:var(--muted); font-size:13px; }
+  .warn { color:var(--danger); font-size:13px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:13px 14px; margin:10px 0; }
+  .verdict { border-width:2px; }
+  .ok { border-color:var(--accent); }
+  .bad { border-color:var(--danger); }
+  .actions { display:flex; flex-wrap:wrap; gap:8px; margin:14px 0; }
+  button { border:1px solid var(--line); background:var(--card); color:var(--ink); border-radius:999px; padding:9px 14px; font-size:14px; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#fbf9f4; }
+  button:disabled { opacity:.4; }
+  textarea { width:100%; height:260px; margin-top:10px; padding:10px; border:1px solid var(--line); border-radius:10px; background:var(--card); color:var(--ink); font:12px/1.5 ui-monospace,Consolas,monospace; }
+  .hidden { display:none; }
+</style>
+</head>
+<body>
+<h1>枝下青 · 本机数据检查</h1>
+<p class="warn">这个页面只读：不会清空、不会修改、不会同步任何记录。</p>
+<div id="out"><div class="card">正在检查本机数据…</div></div>
+<div class="actions">
+  <button id="download" class="primary" disabled>下载本机备份</button>
+  <button id="upload" disabled>上传备份到服务器</button>
+  <button id="show" disabled>显示备份 JSON</button>
+  <button id="copy" disabled>复制摘要</button>
+</div>
+<textarea id="json" class="hidden" readonly placeholder="备份 JSON"></textarea>
+<script>
+(function () {
+  'use strict';
+  var out = document.getElementById('out');
+  var btnDownload = document.getElementById('download');
+  var btnUpload = document.getElementById('upload');
+  var btnShow = document.getElementById('show');
+  var btnCopy = document.getElementById('copy');
+  var webToken = '';
+  try { webToken = String(localStorage.getItem('zhiqing.ruqi.webToken') || '').trim(); } catch (e) {}
+  var jsonBox = document.getElementById('json');
+  var best = null;
+  var bestLabel = '';
+  var lines = [];
+
+  function fmtTime(ms) {
+    var n = Number(ms) || 0;
+    if (!n) return '无';
+    var d = new Date(n);
+    if (isNaN(d.getTime())) return String(ms);
+    return d.toLocaleString('zh-CN', { hour12: false });
+  }
+  function summarize(state) {
+    if (!state || typeof state !== 'object') return null;
+    var days = state.days && typeof state.days === 'object' ? state.days : {};
+    var dates = Object.keys(days).sort();
+    var todos = 0, notes = 0, done = 0;
+    dates.forEach(function (key) {
+      var day = days[key] || {};
+      if (Array.isArray(day.todos)) todos += day.todos.length;
+      var ns = day.notes || {};
+      notes += ['output', 'daily', 'quote'].filter(function (k) { return String(ns[k] || '').trim(); }).length;
+      done += Object.keys(day.done || {}).length;
+    });
+    return {
+      updatedAt: Number(state.updatedAt) || 0,
+      dates: dates.length,
+      first: dates[0] || '',
+      last: dates[dates.length - 1] || '',
+      todos: todos, notes: notes, done: done,
+      sleep: Array.isArray(state.sleep) ? state.sleep.length : 0,
+      ruqi: state.ruqi && Array.isArray(state.ruqi.messages) ? state.ruqi.messages.length : 0
+    };
+  }
+  function card(label, s, note) {
+    if (!s) return '<div class="card"><h2>' + label + '</h2><p class="muted">没有找到数据</p>' + (note ? '<p class="muted">' + note + '</p>' : '') + '</div>';
+    lines.push(label + '：' + s.dates + ' 天，' + s.first + ' → ' + s.last + '，待办 ' + s.todos + '，笔叙 ' + s.notes + '，旧卡片 ' + s.done + '，睡眠 ' + s.sleep + '，如期 ' + s.ruqi + '（更新 ' + fmtTime(s.updatedAt) + '）');
+    return '<div class="card"><h2>' + label + '</h2>' +
+      '<p>最近更新：<b>' + fmtTime(s.updatedAt) + '</b></p>' +
+      '<p>' + s.dates + ' 天 · 待办 ' + s.todos + ' · 笔叙 ' + s.notes + ' · 旧卡片 ' + s.done + ' · 睡眠 ' + s.sleep + ' · 如期 ' + s.ruqi + '</p>' +
+      '<p class="muted">' + (s.first || '—') + ' → ' + (s.last || '—') + '</p>' +
+      (note ? '<p class="muted">' + note + '</p>' : '') + '</div>';
+  }
+  function consider(label, state) {
+    var s = summarize(state);
+    if (s && s.dates && (!best || s.updatedAt > best.updatedAt)) { best = state; bestLabel = label; }
+    return s;
+  }
+  function openDb() {
+    return new Promise(function (resolve) {
+      if (!('indexedDB' in window)) return resolve(null);
+      var req = indexedDB.open('zhiqing.storage');
+      req.onsuccess = function () { resolve(req.result); };
+      req.onerror = function () { resolve(null); };
+    });
+  }
+  function getOne(db, store, key) {
+    return new Promise(function (resolve) {
+      try {
+        var tx = db.transaction(store, 'readonly');
+        var req = tx.objectStore(store).get(key);
+        req.onsuccess = function () { resolve(req.result || null); };
+        req.onerror = function () { resolve(null); };
+      } catch (e) { resolve(null); }
+    });
+  }
+  function getAll(db, store) {
+    return new Promise(function (resolve) {
+      try {
+        var tx = db.transaction(store, 'readonly');
+        var req = tx.objectStore(store).getAll();
+        req.onsuccess = function () { resolve(Array.isArray(req.result) ? req.result : []); };
+        req.onerror = function () { resolve([]); };
+      } catch (e) { resolve([]); }
+    });
+  }
+  function b64urlToBytes(value) {
+    var s = String(value).replace(/-/g, '+').replace(/_/g, '/');
+    var raw = atob(s + '='.repeat((4 - s.length % 4) % 4));
+    var bytes = new Uint8Array(raw.length);
+    for (var i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+    return bytes;
+  }
+  async function decryptCloud(document, token) {
+    var material = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('zhiqing-cloud-v1\u0000' + token));
+    var key = await crypto.subtle.importKey('raw', material, { name: 'AES-GCM' }, false, ['decrypt']);
+    var plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64urlToBytes(document.iv) }, key, b64urlToBytes(document.ciphertext));
+    return JSON.parse(new TextDecoder().decode(plain));
+  }
+
+  (async function () {
+    var parts = [];
+    var localState = null;
+    try {
+      var raw = localStorage.getItem('zhiqing.v1');
+      if (raw) localState = JSON.parse(raw);
+    } catch (e) {}
+    var localSummary = consider('本机 localStorage', localState);
+    parts.push(card('本机 localStorage', localSummary));
+
+    var db = await openDb();
+    var idbCurrent = null, snapshots = [];
+    if (db) {
+      var current = await getOne(db, 'state', 'current');
+      if (current && current.data) idbCurrent = current.data;
+      snapshots = await getAll(db, 'snapshots');
+      snapshots.sort(function (a, b) { return (Number(b.savedAt) || 0) - (Number(a.savedAt) || 0); });
+    }
+    var idbSummary = consider('IndexedDB 当前', idbCurrent);
+    parts.push(card('IndexedDB 当前存档', idbSummary));
+    var latestSnapshot = snapshots[0] ? snapshots[0].data : null;
+    var snapSummary = consider('IndexedDB 最近快照', latestSnapshot);
+    parts.push(card('IndexedDB 快照（' + snapshots.length + ' 份）', snapSummary, snapshots[0] ? '最近一份：' + fmtTime(snapshots[0].savedAt) : ''));
+
+    var cloudConfig = null;
+    try {
+      var cloudRaw = localStorage.getItem('zhiqing.cloud.v1');
+      if (cloudRaw) cloudConfig = JSON.parse(cloudRaw);
+    } catch (e) {}
+    parts.push('<div class="card"><h2>云同步配置</h2>' +
+      (cloudConfig && cloudConfig.url ? '<p>已连接：' + cloudConfig.url + '</p><p class="muted">本地记录的 revision：' + (cloudConfig.revision || 0) + ' · 上次同步：' + fmtTime(cloudConfig.lastSyncAt) + ' · 密钥：' + (cloudConfig.token ? '有（不显示）' : '没有') + '</p>' : '<p class="muted">本机没有云同步配置；云端数据还在，但需要同步密钥才能取回。</p>') +
+      '</div>');
+
+    var cloudState = null, cloudNote = '';
+    if (cloudConfig && cloudConfig.url && cloudConfig.token) {
+      try {
+        var url = String(cloudConfig.url).replace(/\/+$/, '');
+        var res = await fetch(url + '/api/sync', { cache: 'no-store', headers: { Authorization: 'Bearer ' + cloudConfig.token } });
+        var payload = await res.json().catch(function () { return null; });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        if (payload && payload.empty) {
+          cloudNote = '云端为空';
+        } else if (payload && payload.document) {
+          cloudState = await decryptCloud(payload.document, cloudConfig.token);
+          cloudNote = 'revision ' + (payload.revision || 0) + ' · 服务器更新 ' + fmtTime(payload.updatedAt);
+        }
+      } catch (e) {
+        cloudNote = '云端检查失败：' + String(e && e.message || e);
+      }
+    } else {
+      cloudNote = '没有云同步配置，无法直接检查云端';
+    }
+    var cloudSummary = consider('云端', cloudState);
+    parts.push(card('云端（只读检查）', cloudSummary, cloudNote));
+
+    var hasLocal = !!(localSummary && localSummary.dates) || !!(idbSummary && idbSummary.dates) || !!(snapSummary && snapSummary.dates);
+    var verdict;
+    if (hasLocal) {
+      var s = localSummary && localSummary.dates ? localSummary : (idbSummary && idbSummary.dates ? idbSummary : snapSummary);
+      verdict = '<div class="card verdict ok"><h2>本机还有记录</h2><p>共 ' + s.dates + ' 天，最近到 <b>' + s.last + '</b>。先不要清空，也不要连接云同步；先点下面导出/上传备份。</p></div>';
+    } else if (cloudSummary && cloudSummary.dates) {
+      verdict = '<div class="card verdict bad"><h2>本机没有找到记录</h2><p>云端还有 ' + cloudSummary.dates + ' 天，最近到 <b>' + cloudSummary.last + '</b>。先不要清空；把这张截图发给我，我帮你恢复。</p></div>';
+    } else {
+      verdict = '<div class="card verdict bad"><h2>本机和云端都没有找到记录</h2><p>先不要做任何改动，把这张截图发给我。</p></div>';
+    }
+    out.innerHTML = verdict + parts.join('');
+    if (best) {
+      btnDownload.disabled = false;
+      btnUpload.disabled = !webToken;
+      btnShow.disabled = false;
+      btnCopy.disabled = false;
+      if (!webToken) btnUpload.title = '本机没有网页连接密钥，先用下载/显示 JSON';
+    }
+  })();
+
+  btnDownload.addEventListener('click', function () {
+    if (!best) return;
+    var blob = new Blob([JSON.stringify(best, null, 2)], { type: 'application/json' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'zhiqing-backup-' + new Date().toISOString().slice(0, 19).replace(/[:T]/g, '') + '.json';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  });
+  btnUpload.addEventListener('click', async function () {
+    if (!best || !webToken) return;
+    btnUpload.disabled = true;
+    btnUpload.textContent = '上传中…';
+    try {
+      var res = await fetch('https://43.143.82.198/api/ruqi/rescue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + webToken },
+        body: JSON.stringify({ state: best })
+      });
+      var payload = await res.json().catch(function () { return null; });
+      if (!res.ok) throw new Error(payload && payload.error ? payload.error : ('HTTP ' + res.status));
+      btnUpload.textContent = '已上传：' + (payload && payload.id ? payload.id : '');
+    } catch (e) {
+      btnUpload.textContent = '上传失败，请用下载';
+      btnUpload.disabled = false;
+      console.warn(e);
+    }
+  });
+  btnShow.addEventListener('click', function () {
+    if (!best) return;
+    jsonBox.value = JSON.stringify(best, null, 2);
+    jsonBox.classList.remove('hidden');
+    jsonBox.focus();
+  });
+  btnCopy.addEventListener('click', async function () {
+    var text = (document.querySelector('.verdict') ? document.querySelector('.verdict').innerText + '\n\n' : '') + lines.join('\n');
+    try {
+      await navigator.clipboard.writeText(text);
+      btnCopy.textContent = '已复制';
+      setTimeout(function () { btnCopy.textContent = '复制摘要'; }, 1500);
+    } catch (e) {
+      jsonBox.value = text;
+      jsonBox.classList.remove('hidden');
+    }
+  });
+})();
+</script>
+</body>
+</html>
